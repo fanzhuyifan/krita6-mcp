@@ -412,9 +412,10 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         width: RegionSize | None = None,
         height: RegionSize | None = None,
         points: PolygonPoints | None = None,
+        mode: Literal["replace", "add", "subtract", "intersect"] = "replace",
     ) -> CallToolResult:
-        """Replace the selection with a bounded rectangle or polygon in image pixels. Rectangle requires only x/y/width/height; polygon requires only 3–256 integer points. Selection bounds must fit the canvas and 16 megapixels. No guaranteed undo transaction."""
-        params = {"shape": shape}
+        """Replace or combine the selection with a bounded rectangle or polygon in image pixels. Rectangle requires only x/y/width/height; polygon requires only 3–256 integer points. Selection bounds must fit the canvas and 16 megapixels. No guaranteed undo transaction."""
+        params = {"shape": shape, "mode": mode}
         for key, value in (("x", x), ("y", y), ("width", width), ("height", height)):
             if value is not None:
                 params[key] = value
@@ -497,13 +498,26 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         name: Name | None = None,
         visible: Boolean | None = None,
         opacity: Opacity | None = None,
+        blending_mode: Literal[
+            "normal", "multiply", "screen", "overlay", "darken", "lighten", "difference", "addition"
+        ]
+        | None = None,
+        inherit_alpha: Boolean | None = None,
+        alpha_locked: Boolean | None = None,
     ) -> CallToolResult:
-        """Set at least one explicit layer property: name, visibility, or opacity in [0,1]. No guaranteed undo transaction or atomic multi-property rollback. Reuse operation_id on retries."""
+        """Set paint/group/mask name, visibility, or opacity in [0,1]; paint/group blend mode and alpha inheritance; paint-layer alpha lock. No guaranteed undo transaction or atomic multi-property rollback. Reuse operation_id on retries."""
         params = {
             key: value
             for key, value in (("name", name), ("visible", visible), ("opacity", opacity))
             if value is not None
         }
+        for key, value in (
+            ("blending_mode", blending_mode),
+            ("inherit_alpha", inherit_alpha),
+            ("alpha_locked", alpha_locked),
+        ):
+            if value is not None:
+                params[key] = value
         return await execute(
             "set_layer_properties",
             instance_id,
@@ -575,7 +589,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         parent_node_id: Identifier | None = None,
         above_node_id: Identifier | None = None,
     ) -> CallToolResult:
-        """Reorder a layer within its document. Omitted parent means document root; above_node_id selects a sibling to insert above. Changes stacking order without translating pixels. No guaranteed undo transaction. Reuse operation_id on retries."""
+        """Reorder a paint layer or group within its document; rejects cycles and locked/animated subtrees. Omitted parent means document root; above_node_id selects a sibling to insert above. Changes stacking order without translating pixels. No guaranteed undo transaction. Reuse operation_id on retries."""
         params = {}
         if parent_node_id is not None:
             params["parent_node_id"] = parent_node_id
@@ -739,6 +753,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         if response.structured_content.get("command") in {
             "get_preview",
             "get_region_preview",
+            "get_layer_preview",
             "get_diffusion_result",
         }:
             return await attach_preview(response, instance_id)
@@ -786,6 +801,9 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         return await call_next(context)
 
     server.middleware.append(reject_unknown_arguments)
+    from .general_tools import register_general_tools
+
+    register_general_tools(server, execute, attach_preview)
     return server
 
 

@@ -12,6 +12,7 @@ On Linux, install `krita`, `Xvfb`/`xvfb-run`, `xauth`, and `dbus-run-session`. R
 .venv/bin/python tools/probe_krita.py
 .venv/bin/python tools/smoke_krita.py
 .venv/bin/python tools/probe_editing.py
+.venv/bin/python tools/probe_general_editing.py
 .venv/bin/python tools/probe_plugin_import.py
 ```
 
@@ -60,3 +61,7 @@ On an Arch installation, the add-on parent may be `/usr/share/krita/pykrita`; th
 The harness copies backend code and custom nodes into a scratch directory, reuses installed model weights, and starts its own loopback server with fresh database/cache/input/output directories. Its Krita profile connects to that scratch server. API nodes and online model downloads are disabled. Test-owned process groups are stopped afterward; the normal Krita profile and server configuration are not used.
 
 The full probe requests a 512×512 image, inspects it, and explicitly applies it; a second request refines a rectangular selection. It checks duplicate submission/application IDs, unchanged pixels/layers before application even with upstream automatic apply enabled, restored prompt/style/settings, selection preservation, native completion, and application undo/redo. Generated images and raw profiles stay in the scratch output directory. Passing this fixture does not establish every regional/control configuration or model family.
+
+## General editing
+
+`probe_general_editing.py` reuses the isolated profile/display/scratch-document infrastructure and independent native snapshot fixture. It drives the added MCP tools, verifies exact pixels, selection masks and layer PNGs, checks native shape undo/redo and brush restoration, and repeats every mutation ID. It exercises selection combinations/refinement, transparency masks, groups and cycle rejection, alpha locks/compositing/merge, and canvas flip/rotation/crop/resize/scale. Never point it at a normal Krita session. Retain sanitized evidence only after a complete passing run.

@@ -150,9 +150,13 @@ Initially rely on Krita's ordinary user undo for validated native strokes. Defer
 
 File tools use configured input/output roots, canonical containment checks, bounded allowed formats, and explicit overwrite intent. Paths are relative to a named root. Resolve symlinks; reject traversal, unsupported locations, and unexpected special files. No general filesystem browser or remote URL fetch is exposed. The local bridge is not a sandbox against malicious programs already running as the same OS user; do not claim race-proof filesystem isolation from string validation alone.
 
+## General editing
+
+The [general editing decision record](general-editing.md) defines typed group/mask, history, selection, canvas, shape, fill/erase and inspection operations and their bounded host behavior. Validation evidence lives in the [validation record](validation.md#general-editing).
+
 ## Initial MCP surface
 
-Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 24 core tools and eleven optional AI Diffusion tools, for 35 total. The configuration tools persist bounded Generate settings and configure conditioning against explicit layer identities; [integration decisions](diffusion-integration.md#persistent-configuration) define their source and mutation boundary. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
+Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 37 core tools and eleven optional AI Diffusion tools, for 48 total. The configuration tools persist bounded Generate settings and configure conditioning against explicit layer identities; [integration decisions](diffusion-integration.md#persistent-configuration) define their source and mutation boundary. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
 
 | Tool | Contract |
 | --- | --- |

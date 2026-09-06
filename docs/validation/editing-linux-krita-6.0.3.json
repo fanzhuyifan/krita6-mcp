@@ -11,7 +11,7 @@
     "bridge_protocol": 1
   },
   "checks": {
-    "tool_count": 32,
+    "tool_count": 48,
     "activation_selects_requested_document": true,
     "odd_even_bowtie_lobes_and_empty_polygon_rejection": true,
     "rectangle_polygon_and_clear_selection": true,

@@ -85,7 +85,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             listed = await client.list_tools()
             tools = listed.tools if hasattr(listed, "tools") else listed
             by_name = {tool.name: tool for tool in tools}
-            assert len(by_name) == 35
+            assert len(by_name) == 48
             assert by_name["krita_status"].annotations.read_only_hint
             diffusion_tools = {
                 "krita_diffusion_status",
@@ -112,6 +112,14 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             for name in diffusion_mutations:
                 assert not by_name[name].annotations.read_only_hint
                 assert "operation_id" in by_name[name].input_schema["required"]
+            from krita6_bridge.general_protocol import GENERAL_COMMANDS, GENERAL_READS
+
+            for command in GENERAL_COMMANDS:
+                tool = by_name["krita_" + command]
+                assert tool.annotations.read_only_hint == (command in GENERAL_READS)
+                assert ("operation_id" in tool.input_schema["required"]) == (
+                    command not in GENERAL_READS
+                )
             assert "operation_id" in by_name["krita_paint_path"].input_schema["required"]
             assert "pressure" not in by_name["krita_paint_path"].input_schema["properties"]
             editing_mutations = {
@@ -427,6 +435,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             "y": 0,
         }
         assert edits["set_selection"]["params"] == {
+            "mode": "replace",
             "shape": "polygon",
             "points": [[0, 0], [32, 0], [16, 24]],
         }

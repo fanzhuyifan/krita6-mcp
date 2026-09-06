@@ -33,13 +33,26 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | get_region_preview | document_id | x,y: nonnegative int, width,height: int (1..8192, product <=16777216), max_edge: int=1024 (32..1024) |
 | activate_document | document_id | empty |
 | clear_selection | document_id | empty |
-| set_selection | document_id | shape: rectangle with x,y,width,height as above, or polygon with 3..256 integer [x,y] points |
-| set_layer_properties | document_id,node_id | at least one of name: str (1..128), visible: bool, opacity: finite number (0..1) |
+| set_selection | document_id | shape: rectangle with x,y,width,height as above, or polygon with 3..256 integer [x,y] points; mode: replace/add/subtract/intersect=replace |
+| set_layer_properties | document_id,node_id | at least one of name: str (1..128), visible: bool, opacity: finite number (0..1), blending_mode: enum, inherit_alpha/alpha_locked: bool; alpha lock requires paint layer |
 | copy_layer | document_id,node_id | destination_document_id, name: str (1..128), parent_node_id/above_node_id: optional identifiers in destination |
 | move_layer | document_id,node_id | parent_node_id/above_node_id: optional identifiers in same document |
 | transform_layer | document_id,node_id | pivot: [finite x,y] (-32768..32768), translate_x/translate_y: finite number=0 (-32768..32768), scale_x/scale_y: finite number=1 (0.01..16), rotation_degrees: finite number=0 (-360..360) |
 | open_document | empty | root: identifier, path: str (1..4096 characters), bounded PNG/JPEG/KRA |
 | import_image_layer | document_id | root: identifier, path: str (1..4096 characters), name: str (1..128), x,y: nonnegative int, bounded PNG/JPEG |
+| create_group_layer | document_id | name, optional parent_node_id |
+| create_transparency_mask | document_id,node_id (parent paint/group) | name, source: selection/opaque/transparent |
+| set_transparency_mask | document_id,node_id (mask) | source: selection/opaque/transparent |
+| delete_layer | document_id,node_id | empty; rejects last top-level layer and locked/animated subtrees |
+| merge_layer_down | document_id,node_id | empty; two adjacent visible simple paint layers |
+| edit_history | document_id | direction: undo/redo; exactly one step on the active document |
+| modify_selection | document_id | action: invert/grow/shrink/feather; radius: int (1..256) required except invert |
+| transform_canvas | document_id | action: crop/resize with x,y,width,height; scale with width,height and filter=Bicubic; rotate with degrees=-180/-90/90/180; flip with axis=horizontal/vertical |
+| paint_shape | document_id,node_id | shape: rectangle/ellipse; x,y,width,height; preset_id,size_px,opacity,color as strokes; fill: bool=false |
+| fill_layer | document_id,node_id | kind: solid/linear_gradient/flood/erase, color (required except erase), opacity: number=1 (0..1); gradient requires end_color,start,end; flood requires point; integer in-canvas coordinates, at most 1 MP |
+| get_layer_preview | document_id,node_id | max_edge: int=1024 (32..1024); node projection in canvas bounds |
+| sample_color | document_id | x,y: nonnegative int, optional node_id for node projection instead of canvas |
+| inspect_brush | document_id | empty; requires active document |
 | list_brush_presets | empty | query: str="" (0..256 characters), offset: int=0 (0..2147483647), limit: int=50 (1..100) |
 | create_document | empty | width,height: int (1..8192, product <=16777216), name: str (1..128 characters) |
 | create_paint_layer | document_id | name: str (1..128 characters), parent_node_id: optional identifier |
@@ -49,7 +62,7 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | save_document | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 | export_png | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 
-There are twenty-one mutation commands: three diffusion configuration commands and the eight original authoring/diffusion mutations plus activation, selection clearing/replacement, layer properties/copying/moving/transforms, document opening, image import, and Bézier painting. Eleven commands are reads, including region preview. The MCP catalog adds status and operation lookup/cancellation for 35 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
+There are 31 mutation commands and 14 reads. The MCP catalog adds status and operation lookup/cancellation for 48 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
 
 ## Operation ledger
 

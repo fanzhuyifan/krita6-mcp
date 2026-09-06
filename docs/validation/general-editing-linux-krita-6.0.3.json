@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "checks": {
+    "solid_fill_sampling_and_layer_png": true,
+    "native_shapes_history_and_restoration": true,
+    "selection_aware_raster_erasing": true,
+    "gradient_and_connected_flood_fill": true,
+    "selection_combinations_and_refinement": true,
+    "selected_fill_transparency_masks_and_deletion": true,
+    "groups_compositing_locks_and_merge": true,
+    "canvas_flip_rotate_crop_resize_scale": true,
+    "all_mutations_duplicate_ids": true
+  },
+  "tool_count": 48,
+  "host": {
+    "krita_version": "6.0.3",
+    "qt_version": "6.11.2",
+    "pyqt_version": "6.11.0",
+    "python_version": "3.14.7",
+    "platform": "Linux"
+  },
+  "limits": "64x64 RGBA/U8/standard sRGB, Basic-5 Size pixel brush. Raster fills and direct edits have no guaranteed undo transaction."
+}

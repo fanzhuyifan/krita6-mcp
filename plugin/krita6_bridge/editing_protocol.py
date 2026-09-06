@@ -2,6 +2,8 @@
 
 from .protocol_validation import _object, _integer, _number, _point, _string, _invalid, validate_id
 
+from .general_protocol import BLEND_MODES, boolean
+
 LAYER_COMMANDS = {"set_layer_properties", "copy_layer", "transform_layer", "move_layer"}
 DOCUMENT_COMMANDS = {
     "activate_document",
@@ -34,7 +36,9 @@ def validate_editing(c, p):
         rectangle(p)
         p["max_edge"] = _integer(p.get("max_edge", 1024), 32, 1024, "max_edge")
     elif c == "set_layer_properties":
-        p = _object(p, {"name", "visible", "opacity"})
+        p = _object(
+            p, {"name", "visible", "opacity", "blending_mode", "inherit_alpha", "alpha_locked"}
+        )
         if not p:
             _invalid("Provide at least one layer property")
         if "name" in p:
@@ -43,6 +47,11 @@ def validate_editing(c, p):
             _invalid("visible must be a boolean")
         if "opacity" in p:
             p["opacity"] = _number(p["opacity"], 0, 1, "opacity")
+        for key in ("inherit_alpha", "alpha_locked"):
+            if key in p:
+                boolean(p[key], key)
+        if "blending_mode" in p and p["blending_mode"] not in BLEND_MODES:
+            _invalid("Unsupported blending mode")
     elif c in {"copy_layer", "move_layer"}:
         required = {"destination_document_id", "name"} if c == "copy_layer" else set()
         p = _object(p, required | {"parent_node_id", "above_node_id"}, required)
@@ -74,7 +83,10 @@ def validate_editing(c, p):
             for k in ("x", "y"):
                 p[k] = _integer(p[k], 0, 2**31 - 1, k)
     elif c == "set_selection":
-        p = _object(p, {"shape", "x", "y", "width", "height", "points"}, {"shape"})
+        p = _object(p, {"shape", "x", "y", "width", "height", "points", "mode"}, {"shape"})
+        mode = p.pop("mode", "replace")
+        if mode not in ("replace", "add", "subtract", "intersect"):
+            _invalid("Unsupported selection combination")
         if p["shape"] == "rectangle":
             p = _object(
                 p, {"shape", "x", "y", "width", "height"}, {"shape", "x", "y", "width", "height"}
@@ -87,6 +99,7 @@ def validate_editing(c, p):
             p["points"] = [_point(v, True) for v in p["points"]]
         else:
             _invalid("selection shape must be rectangle or polygon")
+        p["mode"] = mode
     else:
         _invalid("Unknown editing command")
     return p

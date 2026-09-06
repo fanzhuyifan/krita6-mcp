@@ -944,6 +944,8 @@ def test_move_detaches_before_insert_and_checks_position(host_modules):
     children[0] = node
     fake._editing_document = lambda handle: object()
     fake._editing_node = lambda doc, handle: node
+    fake._structure_node = lambda *args: node
+    fake._bounded_subtree = lambda candidate: [candidate]
     fake._editing_parent = lambda doc, params: (parent, sibling)
 
     def mutate(handle, callback, result):

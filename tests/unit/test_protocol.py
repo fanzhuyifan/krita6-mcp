@@ -100,6 +100,25 @@ def test_catalog_samples_cover_every_command():
         "configure_diffusion": (doc, {"seed": 42}),
         "set_diffusion_controls": (doc, {"controls": []}),
         "set_diffusion_region": (doc, {"node_id": "node-1", "positive_prompt": "subject"}),
+        "create_group_layer": (doc, {"name": "Group"}),
+        "create_transparency_mask": (
+            {**doc, "node_id": "layer"},
+            {"name": "Mask", "source": "opaque"},
+        ),
+        "set_transparency_mask": ({**doc, "node_id": "mask"}, {"source": "selection"}),
+        "delete_layer": ({**doc, "node_id": "layer"}, {}),
+        "merge_layer_down": ({**doc, "node_id": "layer"}, {}),
+        "edit_history": (doc, {"direction": "undo"}),
+        "modify_selection": (doc, {"action": "invert"}),
+        "transform_canvas": (doc, {"action": "rotate", "degrees": 90}),
+        "paint_shape": (
+            {**doc, "node_id": "layer"},
+            {**brush, "shape": "ellipse", "x": 0, "y": 0, "width": 10, "height": 10},
+        ),
+        "fill_layer": ({**doc, "node_id": "layer"}, {"kind": "solid", "color": "#AABBCC"}),
+        "get_layer_preview": ({**doc, "node_id": "layer"}, {}),
+        "sample_color": (doc, {"x": 0, "y": 0}),
+        "inspect_brush": (doc, {}),
         "list_documents": ({}, {}),
         "inspect_document": (doc, {}),
         "get_preview": (doc, {}),
@@ -140,7 +159,7 @@ def test_catalog_samples_cover_every_command():
         "export_png": (doc, {"root": "output", "path": "scratch.png"}),
     }
     assert set(samples) == COMMANDS
-    assert len(MUTATIONS) == 21
+    assert len(MUTATIONS) == 31
     for command, (target, params) in samples.items():
         normalized = validate_request(request(command, target=target, params=params), "instance-a")
         assert normalized["command"] == command

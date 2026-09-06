@@ -34,6 +34,7 @@ from .diffusion import DiffusionReader
 from .diffusion_generation import DiffusionGenerator
 from .output_paths import resolve_output_path
 from .editing import EditingMixin
+from .general_editing import GeneralEditingMixin
 
 
 SRGB_PROFILE = "sRGB-elle-V2-srgbtrc.icc"
@@ -69,7 +70,7 @@ class Pending:
         return None
 
 
-class KritaHost(EditingMixin):
+class KritaHost(GeneralEditingMixin, EditingMixin):
     def __init__(self, artifacts, output_roots, input_roots=None):
         self._assert_gui_thread()
         self.app = Krita.instance()
@@ -136,9 +137,17 @@ class KritaHost(EditingMixin):
                 },
                 "input_roots": sorted(self.input_roots),
                 "reference_editing": {
-                    "paint_layers_only": True,
+                    "pixel_edits_paint_layers_only": True,
                     "max_region_pixels": 16777216,
                     "transform_undo": "not_guaranteed",
+                    "evidence": "docs/validation.md",
+                },
+                "general_editing": {
+                    "layer_types": ["paintlayer", "grouplayer", "transparencymask"],
+                    "max_fill_pixels": 1048576,
+                    "raster_color": "RGBA/U8/standard-sRGB/little-endian",
+                    "history_scope": "active_document_including_user_edits",
+                    "direct_write_undo": "not_guaranteed",
                     "evidence": "docs/validation.md",
                 },
                 "output_roots": sorted(self.output_roots),
@@ -163,6 +172,19 @@ class KritaHost(EditingMixin):
             )
         # This map is intentionally fixed. There is no arbitrary method dispatch.
         handlers = {
+            "create_group_layer": self._create_group_layer,
+            "create_transparency_mask": self._create_transparency_mask,
+            "set_transparency_mask": self._set_transparency_mask,
+            "delete_layer": self._delete_layer,
+            "merge_layer_down": self._merge_layer_down,
+            "edit_history": self._edit_history,
+            "modify_selection": self._modify_selection,
+            "transform_canvas": self._transform_canvas,
+            "paint_shape": self._paint_shape,
+            "fill_layer": self._fill_layer,
+            "get_layer_preview": self._get_layer_preview,
+            "sample_color": self._sample_color,
+            "inspect_brush": self._inspect_brush,
             "activate_document": self._activate_document,
             "clear_selection": self._clear_selection,
             "get_region_preview": self._get_region_preview,

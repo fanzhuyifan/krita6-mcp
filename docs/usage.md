@@ -20,7 +20,7 @@ Run `uv run krita6-mcp doctor --json` from the checkout to read connection state
 
 ## Editing and retries
 
-Before editing, list documents and inspect the target. The catalog has 24 core tools and eleven optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
+Before editing, list documents and inspect the target. The catalog has 37 core tools and eleven optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
 
 Native painting requires an active document view, an unlocked nonanimated paint layer, no selection, zero canvas offset, and RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc`. The supported engine is the pixel brush engine. Paths and cubic Bézier paths do not support arbitrary per-point pressure; lines accept endpoint pressure. There is no arbitrary Python/action-execution tool or MCP undo tool. Ordinary Krita undo is available for native strokes. See [validation evidence](validation.md) for the exact tested build and preset.
 
@@ -96,3 +96,13 @@ krita_set_diffusion_controls(instance_id, operation_id="controls-1", document_id
 ```
 
 Pass `region_node_id=subject_layer_id` to configure regional controls. Passing `controls=[]` clears only the selected list. Inspect the diffusion document after configuration and after backend connection to check control support. These persistent settings do not start generation; generation calls still specify their root prompts/strength/seed explicitly. See the [configuration scope and limits](diffusion-integration.md#persistent-configuration).
+
+### General editing
+
+Use `krita_create_group_layer` and `krita_move_layer` to organize paint layers/groups. Add a transparency mask from the current selection with `krita_create_transparency_mask`; update its coverage with `krita_set_transparency_mask`. `krita_set_layer_properties` also supports typed blend modes, alpha inheritance, and paint-layer alpha lock. Deletion returns removed handles; merging returns the new layer handle.
+
+`krita_set_selection` accepts replace/add/subtract/intersect; `krita_modify_selection` adds inversion, grow/shrink and feathering. `krita_transform_canvas` operates on the full image: crop, resize, scale, right-angle rotation, or image flip. Inspect geometry after a transform before using earlier coordinates.
+
+`krita_paint_shape` draws native rectangles/ellipses. `krita_fill_layer` provides solid, linear-gradient, exact connected flood fills and selection-aware erasing within a one-megapixel canvas, respecting selection coverage. These raster fills do not promise native brush behavior or undo transactions.
+
+Use `krita_get_layer_preview`, `krita_sample_color`, and `krita_inspect_brush` for inspection. `krita_edit_history` performs one undo/redo step on the active document, including user edits in that history. Reuse its operation ID on retries, then inspect the result. It cannot selectively undo an arbitrary bridge operation or make direct writes undoable.

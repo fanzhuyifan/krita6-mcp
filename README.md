@@ -99,3 +99,11 @@ Diffusion configuration validation (isolated profile and scratch document; no ba
 ```
 
 The [testing guide](docs/testing.md) documents host prerequisites and the separate local-backend generation/style probe.
+
+General editing now includes groups/transparency masks, compositing, deletion/merge, single-step undo/redo, selection combination/refinement, canvas transforms, native shapes, raster fills/erasing, and layer/color/brush inspection. See [scope and limits](docs/general-editing.md).
+
+Run its independent live-host probe with an isolated profile and scratch documents:
+
+```bash
+.venv/bin/python tools/probe_general_editing.py
+```

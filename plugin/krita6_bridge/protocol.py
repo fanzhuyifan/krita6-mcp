@@ -22,6 +22,14 @@ from .editing_protocol import (
 
 from .diffusion_protocol import CONFIG_COMMANDS, validate_configuration
 
+from .general_protocol import (
+    GENERAL_COMMANDS,
+    GENERAL_MUTATIONS,
+    GENERAL_LAYER_COMMANDS,
+    GENERAL_DOCUMENT_COMMANDS,
+    validate_general,
+)
+
 PROTOCOL_VERSION = 1
 PLUGIN_VERSION = "0.1.0"
 MUTATIONS = frozenset(
@@ -51,8 +59,8 @@ COMMANDS = MUTATIONS | {
 }
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
 
-MUTATIONS = MUTATIONS | EDITING_MUTATIONS | CONFIG_COMMANDS
-COMMANDS = COMMANDS | EDITING_COMMANDS | CONFIG_COMMANDS
+MUTATIONS = MUTATIONS | EDITING_MUTATIONS | CONFIG_COMMANDS | GENERAL_MUTATIONS
+COMMANDS = COMMANDS | EDITING_COMMANDS | CONFIG_COMMANDS | GENERAL_COMMANDS
 
 
 def validate_request(body, instance_id):
@@ -84,10 +92,14 @@ def validate_request(body, instance_id):
     )
     target_fields = (
         {"document_id", "node_id"}
-        if c in {"paint_path", "paint_line", "paint_bezier_path"} | LAYER_COMMANDS
+        if c
+        in {"paint_path", "paint_line", "paint_bezier_path"}
+        | LAYER_COMMANDS
+        | GENERAL_LAYER_COMMANDS
         else {"document_id"}
         if c
         in DOCUMENT_COMMANDS
+        | GENERAL_DOCUMENT_COMMANDS
         | CONFIG_COMMANDS
         | {
             "inspect_document",
@@ -108,7 +120,9 @@ def validate_request(body, instance_id):
     for k, v in target.items():
         validate_id(v, k)
     p = r.get("params", {})
-    if c in CONFIG_COMMANDS:
+    if c in GENERAL_COMMANDS:
+        p = validate_general(c, p)
+    elif c in CONFIG_COMMANDS:
         p = validate_configuration(c, p)
     elif c in EDITING_COMMANDS:
         p = validate_editing(c, p)

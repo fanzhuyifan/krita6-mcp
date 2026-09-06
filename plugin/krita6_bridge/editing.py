@@ -226,13 +226,31 @@ class EditingMixin:
             if not any(packed):
                 raise BridgeError("INVALID_GEOMETRY", "The polygon must select at least one pixel.")
             selection.setPixelData(packed, x, y, w, h)
+        mode = params.get("mode", "replace")
+        if mode != "replace":
+            current = document.selection()
+            if current is None:
+                raise BridgeError("SELECTION_REQUIRED", "Create a selection before combining it.")
+            self._editing_rect(
+                document, current.x(), current.y(), current.width(), current.height()
+            )
+            combined = current.duplicate()
+            {"add": combined.add, "subtract": combined.subtract, "intersect": combined.intersect}[
+                mode
+            ](selection)
+            selection = combined
         return self._editing_mutate(
             target["document_id"],
             lambda: document.setSelection(selection),
             {
-                "selection": {"x": x, "y": y, "width": w, "height": h},
+                "selection": {
+                    "x": selection.x(),
+                    "y": selection.y(),
+                    "width": selection.width(),
+                    "height": selection.height(),
+                },
                 "shape": params["shape"],
-                "mode": "replace",
+                "mode": mode,
             },
         )
 
@@ -283,7 +301,15 @@ class EditingMixin:
 
     def _set_layer_properties(self, target, params):
         document = self._editing_document(target["document_id"])
-        node = self._editing_node(document, target["node_id"])
+        node = self._structure_node(document, target["node_id"])
+        if "alpha_locked" in params and node.type() != "paintlayer":
+            raise BridgeError("INVALID_TARGET_TYPE", "Alpha lock requires a paint layer.")
+        if node.type() == "transparencymask" and (
+            "blending_mode" in params or "inherit_alpha" in params
+        ):
+            raise BridgeError(
+                "INVALID_TARGET_TYPE", "Masks do not support layer compositing properties."
+            )
         actual = dict(params)
         if "opacity" in actual:
             actual["opacity"] = round(actual["opacity"] * 255)
@@ -296,6 +322,9 @@ class EditingMixin:
                         ("name", node.setName),
                         ("visible", node.setVisible),
                         ("opacity", node.setOpacity),
+                        ("blending_mode", node.setBlendingMode),
+                        ("inherit_alpha", node.setInheritAlpha),
+                        ("alpha_locked", node.setAlphaLocked),
                     )
                     if key in actual
                 ]
@@ -337,8 +366,11 @@ class EditingMixin:
 
     def _move_layer(self, target, params):
         document = self._editing_document(target["document_id"])
-        node = self._editing_node(document, target["node_id"])
+        node = self._structure_node(document, target["node_id"], ("paintlayer", "grouplayer"))
+        subtree = self._bounded_subtree(node)
         parent, above = self._editing_parent(document, params)
+        if parent in subtree:
+            raise BridgeError("INVALID_TARGET", "Cannot move a group into its own subtree.")
         if above == node:
             raise BridgeError("INVALID_TARGET", "A layer cannot be inserted above itself.")
 

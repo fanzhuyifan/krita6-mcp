@@ -2,7 +2,7 @@
 
 Updated 2026-09-06 for initial implementation 0.1.0.
 
-The core native workflow passes on Linux/Krita 6.0.3. The 35-tool MCP catalog includes eleven optional AI Diffusion tools, with generation tied to a pinned Qt6 development plugin and a connected local backend. The bridge has automated protocol, transport, ledger, host-guard, diffusion-reader, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
+The core native workflow passes on Linux/Krita 6.0.3. The 48-tool MCP catalog includes eleven optional AI Diffusion tools, with generation tied to a pinned Qt6 development plugin and a connected local backend. The bridge has automated protocol, transport, ledger, host-guard, diffusion-reader, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
 
 ## 0. Prove the host API before building the catalog
 

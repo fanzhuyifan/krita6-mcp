@@ -127,3 +127,22 @@ The [configuration report](validation/diffusion-configuration-linux-krita-6.0.3.
 No backend was connected for that configuration run. It does not establish generation compatibility for every control mode/model, multi-linked regions, persistence across save/reopen, undo grouping, or other platforms. The automated suite separately covers input bounds, cancellation before dispatch, deduplication/conflicts, ambiguous region identities, and partial setter failures.
 
 The expanded local-backend generation probe also passed persistent selection of the supported Digital Artwork (SD1.5) style and duplicate-ID handling, independently observed by the native fixture. Full-image generation, selection refinement, explicit application, and native undo/redo passed with that persistent style. The same configuration report retains sanitized results and backend versions. The final automated suite passed 465 tests; Ruff checks/formatting and source/wheel/plugin-ZIP builds passed.
+
+## General editing
+
+The [general editing report](validation/general-editing-linux-krita-6.0.3.json) records a complete passing production MCP run on the reference Linux/Krita 6.0.3 host, with a 64 × 64 RGBA/U8/standard-sRGB scratch canvas and Basic-5 Size preset. The catalog contains 48 tools. An independent GUI-thread fixture checked:
+
+- Solid fill, canvas color sampling, and exact red/alpha values in the independently decoded layer PNG.
+- Native rectangle/ellipse pixels, exact single-step undo/redo of the rectangle, and brush context restoration.
+- Selection-aware raster erasing, a black-to-white gradient, and four-connected flood fill that preserves the enclosed differently colored area.
+- Add/subtract/intersect selection coverage, grow/shrink/feather, and inversion as the exact complement of the feathered mask.
+- Selection-masked color fill, transparency masks initialized from selection and changed to opaque/transparent, and mask deletion restoring projection.
+- Group visibility and moves, cycle rejection, alpha-lock rejection, multiply compositing, and merge preserving pixels and returning a usable new handle.
+- Horizontal/vertical image flips, right-angle rotation, crop, offset canvas resize, and nearest-neighbor scale.
+- Duplicate IDs return the same settled result for every mutation, including history and merge.
+
+Krita's initial opaque background is hidden in this fixture so transparency is measured directly. Native mergeDown can return no wrapper after a successful merge on this build; the bridge reconciles the parent tree instead of treating that return as proof of failure. A bounded busy retry in the harness uses a fresh ID only after confirming a settled rejection with effect=none; uncertain mutations are never replayed.
+
+The existing reference-editing probe also passed again with the 48-tool catalog. The automated suite passes 503 tests, including cancellation-before-dispatch and duplicate/conflicting identities for every added mutation, hidden-group restoration, history guards, flood connectivity, and merge reconciliation. Lint, formatting, Python distributions and plugin ZIP builds pass.
+
+These results establish the tested small Linux fixture, not all engines, platforms, scale filters, or document types. Raster fills/erasing are limited to one megapixel and standard sRGB; direct pixel/mask/selection edits have no guaranteed undo transaction. History steps operate on the active document's real history, including user edits.
