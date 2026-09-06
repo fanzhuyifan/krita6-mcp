@@ -1,0 +1,51 @@
+{
+  "passed": true,
+  "versions": {
+    "krita_version": "6.0.3",
+    "qt_version": "6.11.2",
+    "pyqt_version": "6.11.0",
+    "python_version": "3.14.7",
+    "platform": "Linux",
+    "display_backend": "xcb",
+    "plugin_version": "0.1.0",
+    "bridge_protocol": 1
+  },
+  "checks": {
+    "tool_count": 13,
+    "duplicate_document_dispatched_once": true,
+    "native_path_and_line": true,
+    "inline_png": true,
+    "layered_save_and_separate_export": true,
+    "overwrite_rejected": true
+  },
+  "preview": {
+    "mime_type": "image/png",
+    "size_bytes": 2432,
+    "source_bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 160,
+      "height": 120
+    },
+    "source_offset": {
+      "x": 0,
+      "y": 0
+    },
+    "preview_width": 160,
+    "preview_height": 120,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "color": {
+      "source_profile": "sRGB-elle-V2-srgbtrc.icc",
+      "source_model": "RGBA",
+      "source_depth": "U8",
+      "preview_profile": "unspecified",
+      "conversion": "Krita thumbnail API",
+      "alpha": "Krita thumbnail API"
+    }
+  },
+  "preview_sha256": "d44bd3d95e248f17aed26c00ac2ffb715ea3a8e5e62dcd77e330e3b0f81fd663",
+  "sanitization": "Session, document and artifact identifiers omitted. No discovery tokens or private paths retained."
+}

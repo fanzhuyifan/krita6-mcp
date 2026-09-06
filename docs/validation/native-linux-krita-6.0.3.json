@@ -1,0 +1,33 @@
+{
+  "krita": "6.0.3",
+  "qt": "6.11.2",
+  "pyqt": "6.11.0",
+  "python": "3.14.7",
+  "checks": {
+    "native_path_changes_pixels": true,
+    "explicit_projection_size": true,
+    "path_png": true,
+    "resource_snapshot_survives_immediate_restore": true,
+    "path_one_undo_restores_pixels": true,
+    "path_redo_restores_pixels": true,
+    "native_pressure_line_changes_pixels": true,
+    "line_one_undo_restores_pixels": true,
+    "line_redo_restores_pixels": true,
+    "thumbnail_size": true,
+    "thumbnail_preserves_document_state": true,
+    "save_kra": true,
+    "export_png": true,
+    "reopen_kra": true,
+    "reopen_layer_structure": true,
+    "reopen_pixels": true
+  },
+  "passed": true,
+  "preset": "b) Basic-5 Size",
+  "path_center_rgba": [
+    255,
+    0,
+    0,
+    255
+  ],
+  "pixel_sha256": "703d664ad790971ee71dce2a5ff8324eac498052235a81e8b0dc65195d533e9d"
+}
