@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=krita6_bridge
+X-Python-2-Compatible=false
+Name=Krita 6 MCP Bridge
+Comment=Local authenticated MCP bridge for native Krita painting

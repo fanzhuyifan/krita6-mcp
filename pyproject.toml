@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "krita6-mcp"
+version = "0.1.0"
+description = "A local MCP bridge for Krita 6 native painting"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["mcp>=2.1.1,<3"]
+
+[project.scripts]
+krita6-mcp = "krita6_mcp.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.12,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/krita6_mcp", "plugin/krita6_bridge"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration"]
+pythonpath = ["src", "plugin"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
