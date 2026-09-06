@@ -76,6 +76,22 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
             params=params,
         )
 
+    async def attach_preview(response: CallToolResult, instance_id: str) -> CallToolResult:
+        data = response.structured_content
+        if response.is_error or data.get("state") != "succeeded":
+            return response
+        artifact_id = (data.get("result") or {}).get("artifact_id")
+        if not artifact_id:
+            return response
+        try:
+            png = await asyncio.to_thread(bridge.get_artifact, instance_id, artifact_id)
+            return _result(data, image=png)
+        except BridgeError as exc:
+            return _result(
+                {**data, "preview_error": {"code": exc.code, "message": exc.message}},
+                error=True,
+            )
+
     @server.tool(annotations=READ_ONLY)
     async def krita_status(instance_id: Identifier | None = None) -> CallToolResult:
         """Discover reachable Krita bridges, exact versions, capabilities and queue health. No document changes."""
@@ -135,19 +151,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
             target={"document_id": document_id},
             params={"max_edge": max_edge},
         )
-        data = response.structured_content
-        if not response.is_error and data.get("state") == "succeeded":
-            artifact_id = (data.get("result") or {}).get("artifact_id")
-            if artifact_id:
-                try:
-                    png = await asyncio.to_thread(bridge.get_artifact, instance_id, artifact_id)
-                    return _result(data, image=png)
-                except BridgeError as exc:
-                    return _result(
-                        {**data, "preview_error": {"code": exc.code, "message": exc.message}},
-                        error=True,
-                    )
-        return response
+        return await attach_preview(response, instance_id)
 
     @server.tool(annotations=MUTATION)
     async def krita_create_document(
@@ -299,26 +303,8 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         response = await call(
             bridge.get_operation, instance_id=instance_id, operation_id=operation_id
         )
-        data = response.structured_content
-        if (
-            not response.is_error
-            and data.get("command") == "get_preview"
-            and data.get("state") == "succeeded"
-        ):
-            artifact_id = (data.get("result") or {}).get("artifact_id")
-            if artifact_id:
-                try:
-                    return _result(
-                        data,
-                        image=await asyncio.to_thread(
-                            bridge.get_artifact, instance_id, artifact_id
-                        ),
-                    )
-                except BridgeError as exc:
-                    return _result(
-                        {**data, "preview_error": {"code": exc.code, "message": exc.message}},
-                        error=True,
-                    )
+        if response.structured_content.get("command") == "get_preview":
+            return await attach_preview(response, instance_id)
         return response
 
     @server.tool(

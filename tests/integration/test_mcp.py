@@ -13,6 +13,7 @@ import pytest
 from mcp import Client, StdioServerParameters
 
 from krita6_bridge.operations import OperationLedger
+from krita6_bridge.protocol import BridgeError
 from krita6_bridge.transport import ArtifactStore, BridgeServer
 from krita6_mcp.server import create_server
 
@@ -158,6 +159,16 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             images = [item for item in preview.content if item.type == "image"]
             assert len(images) == 1
             assert base64.b64decode(images[0].data) == PNG
+            retrieved_preview = await client.call_tool(
+                "krita_get_operation",
+                {
+                    "instance_id": "integration",
+                    "operation_id": preview.structured_content["operation_id"],
+                },
+            )
+            assert not retrieved_preview.is_error
+            assert retrieved_preview.structured_content == preview.structured_content
+            assert retrieved_preview.content == preview.content
             invalid = await client.call_tool(
                 "krita_create_document", {**params, "operation_id": "bad-number", "width": True}
             )
@@ -243,3 +254,76 @@ def test_expired_result_reports_retrieval_error_without_replay():
         assert len(dispatched) == 1
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("tool_name", ["krita_get_preview", "krita_get_operation"])
+def test_preview_retrieval_failure_preserves_operation_and_metadata(tool_name):
+    snapshot = {
+        "instance_id": "preview-test",
+        "operation_id": "preview-1",
+        "command": "get_preview",
+        "state": "succeeded",
+        "effect": "none",
+        "result": {"artifact_id": "image-1", "preview_width": 160, "preview_height": 120},
+    }
+
+    class PreviewBridge:
+        def execute(self, command, **kwargs):
+            return snapshot
+
+        def get_operation(self, instance_id, operation_id):
+            return snapshot
+
+        def get_artifact(self, instance_id, artifact_id):
+            assert (instance_id, artifact_id) == ("preview-test", "image-1")
+            raise BridgeError("ARTIFACT_NOT_FOUND", "Preview is no longer available")
+
+    params = {"instance_id": "preview-test"}
+    if tool_name == "krita_get_preview":
+        params["document_id"] = "scratch"
+    else:
+        params["operation_id"] = "preview-1"
+    response = asyncio.run(create_server(PreviewBridge()).call_tool(tool_name, params))
+    assert response.is_error
+    assert response.structured_content == {
+        **snapshot,
+        "preview_error": {
+            "code": "ARTIFACT_NOT_FOUND",
+            "message": "Preview is no longer available",
+        },
+    }
+    assert all(item.type != "image" for item in response.content)
+
+
+@pytest.mark.parametrize(
+    ("command", "state", "error"),
+    [
+        ("export_png", "succeeded", None),
+        ("get_preview", "queued", None),
+        ("get_preview", "failed", None),
+        ("get_preview", "succeeded", {"code": "RESULT_EXPIRED"}),
+    ],
+)
+def test_operation_only_retrieves_artifacts_for_successful_previews(command, state, error):
+    snapshot = {
+        "command": command,
+        "state": state,
+        "error": error,
+        "result": {"artifact_id": "image-1"},
+    }
+
+    class OperationBridge:
+        def get_operation(self, instance_id, operation_id):
+            return snapshot
+
+        def get_artifact(self, instance_id, artifact_id):
+            pytest.fail("An unrelated or unfinished operation must not fetch an image")
+
+    response = asyncio.run(
+        create_server(OperationBridge()).call_tool(
+            "krita_get_operation", {"instance_id": "preview-test", "operation_id": "operation-1"}
+        )
+    )
+    assert response.structured_content == snapshot
+    assert bool(response.is_error) == bool(error or state == "failed")
+    assert all(item.type != "image" for item in response.content)
