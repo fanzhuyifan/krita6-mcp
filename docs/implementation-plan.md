@@ -1,6 +1,8 @@
 # Implementation plan
 
-Draft · 2026-09-06 · All milestones are pending.
+Updated 2026-09-06 for initial implementation 0.1.0.
+
+The core native workflow and the 13-tool MCP surface are implemented and pass on Linux/Krita 6.0.3. The bridge has automated protocol, transport, ledger, host-guard, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
 
 ## 0. Prove the host API before building the catalog
 
@@ -40,16 +42,15 @@ Add bounded open-file support, layer visibility/name/opacity, native shapes, and
 - Safe programmatic undo or grouped edits: requires reliable ownership/history evidence or an upstream undo API.
 - Animation, vector/text editing, large-document tiling, remote transport: separate capability work after the local loop is dependable.
 
-## Proposed repository layout
+## Current repository layout
 
 ```text
 pyproject.toml
 uv.lock
 src/krita6_mcp/
   server.py                 # MCP registration and lifespan
-  models.py                 # Typed tool inputs/results
   bridge_client.py          # Discovery, HTTP, polling, retry policy
-  cli.py                    # doctor, server, explicit smoke workflow
+  cli.py                    # doctor and stdio server
 plugin/
   krita6_bridge.desktop
   krita6_bridge/
@@ -58,22 +59,26 @@ plugin/
     transport.py            # Authenticated bounded HTTP
     executor.py             # GUI queue and completion checks
     operations.py           # Admission, cancellation, deduplication
-    registry.py             # Live document/node/preset identities
-    commands/               # Fixed Krita operation implementations
-    imaging.py              # Preview and managed color handling
-protocol/
-  v1/                       # Schemas and shared valid/invalid fixtures
+    discovery.py            # POSIX state files and session discovery
+    protocol.py             # Shared strict command validation
+    host.py                 # Live identities, commands, painting, preview
 tests/
   unit/                     # Pure state transitions and validation
   integration/              # Bridge plus fake host, real stdio MCP
   host/                     # Explicit live-Krita scratch workflows
 tools/
   build_plugin.py
+  probe_krita.py             # Isolated native API proof
+  smoke_krita.py             # Production plugin through real MCP
 docs/
+  validation.md
+  validation/               # Sanitized reports and small test PNGs
 ```
 
-The layout is a proposal; these implementation files do not yet exist. Generate or validate both sides' command contracts from the same fixtures to prevent the dependency-free plugin validators from drifting from the external typed models.
+The external wheel also includes the dependency-free bridge modules; importing them does not load Qt outside Krita. The plugin ZIP contains no MCP dependency or test harness. MCP input models and the strict shared validator both validate commands. Per-tool output schemas, installation automation, and advanced editing remain future work.
 
-## First engineering decision after the spike
+## Decisions established by the first implementation
 
-Keep the proposed two-process architecture if native painting, preview capture, and completion work reliably on Krita 6. Select the exact executor completion strategy from those results. Freeze bridge protocol v1 and the smallest tool schemas only after that evidence exists.
+Keep the two-process architecture. A GUI timer polls nonblocking image barriers and retains the dispatch gate across native work. Native paths and lines produce real pixels and separate undo entries on the reference build; immediate foreground restoration does not alter the submitted stroke. Use Krita's bounded thumbnail API for feedback with explicit unspecified output-profile metadata. Krita's preset XML changes under bridge-owned setting updates, so synchronously refresh that handle fingerprint after restoring the originating view.
+
+Next validation priorities are busy-image and tab-closure races, repeated stop/start under live native work, multiple simultaneous Krita instances, alternate DPI/zoom configurations, and additional presets. Windows ACL support and macOS host validation require separate work. An optional [AI Diffusion adapter](design.md#optional-krita-ai-diffusion-integration) is a future extension, not part of the current tool catalog.

@@ -1,6 +1,6 @@
 # Krita 6 MCP design
 
-Draft decision record · 2026-09-06
+Decision record · Initial implementation 0.1.0 · 2026-09-06
 
 ## Objective and scope
 
@@ -8,7 +8,7 @@ Build a local MCP server for deliberate, observable editing in a running Krita 6
 
 The first release covers document inspection/creation, paint layers, native paths and lines, bounded canvas previews, `.kra` saving, and PNG export. Target Krita 6 with Python plugin support; start with the installed Linux package. Krita 5 compatibility, remote network service, headless rendering, animation, arbitrary Python execution, general action triggering, and model/image-generation backends are outside the first release.
 
-This is a proposed implementation, not a compatibility claim. Source-level findings and untested assumptions are separated in [research](research.md); live validation gates are in the [implementation plan](implementation-plan.md).
+The initial workflow is implemented and tested on Linux with Krita 6.0.3. The [validation record](validation.md) distinguishes verified behavior from remaining gates. Source-level findings are in [research](research.md); future work remains in the [implementation plan](implementation-plan.md).
 
 ## Architecture
 
@@ -39,9 +39,9 @@ Ship `krita6_bridge.desktop` and a `krita6_bridge/` Python package. An `Extensio
 
 Import `krita` and PyQt6 explicitly; use scoped Qt6 enums and current method names. Detect missing bindings and unsupported Krita versions at startup. Do not silently fall back to PyQt5. The inspected installed Krita bootstrap rejects the wrong Qt major; its exact location is recorded in the [local evidence](research.md).
 
-All Krita API access, including reads and lifecycle discovery, belongs to an executor constructed on the GUI thread. HTTP workers carry JSON and immutable bytes, never document/node wrappers. A queued signal wakes the executor; a GUI-owned timer can resume pending completion checks. Keep strong references to these objects. Process one mutation at a time, and yield between commands. No blocking queued connections, recursive event pumping, or network calls from the GUI executor. This follows [Qt's threading model](https://doc.qt.io/qt-6/threads-qobject.html).
+All Krita API access, including reads and lifecycle discovery, belongs to an executor constructed on the GUI thread. HTTP workers carry JSON and immutable bytes, never document/node wrappers. A GUI-owned 20 ms timer dispatches queued commands and resumes pending completion checks. Keep strong references to these objects. Process one command at a time, and yield between commands. No blocking queued connections, recursive event pumping, or network calls from the GUI executor. This follows [Qt's threading model](https://doc.qt.io/qt-6/threads-qobject.html).
 
-Do not equate a returned `paintPath()` call with a rendered, undoable result. The native API schedules stroke work. The first spike must establish a completion strategy using the actual build's barrier/readiness APIs. Prefer bounded, nonblocking checks with `tryBarrierLock()` and immediate `unlock()` when acquired; validate their suitability before choosing them. Never hold an image lock while initiating painting or export. If a synchronous Krita method blocks, the bridge cannot promise a hard execution deadline or immediate cancellation.
+Do not equate a returned `paintPath()` call with a rendered, undoable result. The native API schedules stroke work. The implementation polls `tryBarrierLock()` and immediately unlocks when acquired; the reference host tests verify settled pixels after this barrier. Never hold an image lock while initiating painting or export. Native completion has no forced timeout: a client stopping its wait does not release the GUI dispatch gate. If a synchronous Krita method blocks, the bridge cannot promise a hard execution deadline or immediate cancellation.
 
 While native work completes, keep later mutations and document reads queued, or return `DOCUMENT_BUSY` for reads that cannot wait. In particular, do not capture a preview before the preceding native work settles. Ledger status requires no Qt calls. A modal dialog, missing active view, closed document, locked layer, or busy image must produce an explicit state/error rather than unsafe dispatch. Re-resolve objects on every deferred GUI continuation because the user can close a tab between ticks.
 
@@ -49,7 +49,7 @@ Stopping enters `draining`: reject new work, cancel queued work, and keep the or
 
 ## Connection and command protocol
 
-Bind only to `127.0.0.1`, using an OS-assigned port. Write one discovery file per bridge instance in a per-user application-state directory. Include `bridge_protocol`, plugin/Krita versions, PID, port, random `instance_id`, and a fresh 256-bit bearer token. Use atomic replacement, owner-only POSIX permissions or a user-restricted Windows ACL. Treat the PID as diagnostic data, not identity. Verify the instance with an authenticated handshake and remove stale discovery files safely.
+Bind only to `127.0.0.1`, using an OS-assigned port. Write one discovery file per bridge instance in a per-user application-state directory. Include `bridge_protocol`, plugin/Krita versions, PID, port, random `instance_id`, and a fresh 256-bit bearer token. Use atomic replacement and owner-only POSIX permissions. Windows is rejected until user-restricted ACL handling is implemented; macOS remains untested. Treat the PID as diagnostic data, not identity. Verify the instance with an authenticated handshake; the adapter ignores stale discovery without deleting another session's files.
 
 The adapter selects an explicit instance when more than one is live. Every command includes its expected `instance_id`, so an old port or a restarted plugin cannot silently receive an edit. Never expose the bearer token through tools, stdout, or logs. Disable proxy use for local bridge requests and reject redirects.
 
@@ -116,7 +116,7 @@ Never retain document/view wrappers supplied by Notifier callbacks: some are del
 
 Document inspection reports bounds/origin, dimensions, profile/model/depth, modified state, active view, selection summary, current frame, and layer hierarchy. Validate target type, ancestor locks/visibility, dimensions, and color space immediately before editing. V1 painting supports nonanimated paint layers and rejects an active nonempty selection until selection semantics have been validated and added explicitly.
 
-A `bridge_sequence` counts completed bridge mutations. It is not a document revision and cannot detect every user edit. Do not claim optimistic concurrency or atomic multi-command transactions without a reliable host revision signal. The first implementation does not expose a general batch tool.
+A `bridge_sequence` counts dispatched mutation commands reaching a terminal result, including failures. The ledger owns this counter. It is not a document revision and cannot detect every user edit. Do not claim optimistic concurrency or atomic multi-command transactions without a reliable host revision signal. The first implementation does not expose a general batch tool.
 
 ## Native painting and visual feedback
 
@@ -150,7 +150,7 @@ File tools use configured input/output roots, canonical containment checks, boun
 
 ## Initial MCP surface
 
-Use individually typed tools rather than an unbounded `execute(command, args)` tool. Names below are proposed. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
+Use individually typed tools rather than an unbounded `execute(command, args)` tool. The following 13 tools are implemented. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
 
 | Tool | Contract |
 | --- | --- |
@@ -170,12 +170,18 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 
 Add file opening and simple layer-property tools in the next increment after their modal/error/undo behavior is verified. A static capability resource can complement these tools, but clients should not require resource subscriptions to perform the basic workflow.
 
-Tool results carry a typed object, concise text, and optional image blocks. Expected tool failures use MCP tool errors, with stable domain codes such as `BRIDGE_UNAVAILABLE`, `PROTOCOL_MISMATCH`, `TARGET_NOT_FOUND`, `TARGET_NOT_ACTIVE`, `DOCUMENT_BUSY`, `UNSUPPORTED_CAPABILITY`, `QUEUE_FULL`, `OPERATION_ID_CONFLICT`, and `OUTCOME_UNKNOWN`. A returned pending operation is a known state, not falsely reported success. Tool annotations describe side effects but do not enforce permissions.
+Tool inputs have generated JSON schemas and shared strict bridge validation. Results carry structured JSON, concise text, and optional image blocks; published per-tool output schemas remain future work. Expected tool failures use MCP tool errors with stable domain codes. A returned pending operation is a known state, not falsely reported success. Tool annotations describe side effects but do not enforce permissions.
 
 ## Limits and observability
 
-Initial limits are tunable hypotheses: 4 HTTP workers, 32 queued GUI commands, 1 MiB JSON requests, 2,048 path points, 16 megapixels for document creation, 1024-pixel preview edge, and 2 MiB encoded previews. Bound decoded image area as well as compressed bytes. Inventory reads paginate. Bound artifact count/total bytes/TTL separately from mutation tombstones; exhausted preview storage does not evict mutation identities.
+Enforced initial limits: 4 HTTP workers with absolute 2-second connection deadlines, 32 queued GUI commands, 1 MiB JSON requests, 2,048 path points, 16 megapixels for document creation, 32 open documents for creation, 4,096 layers/masks for layer creation, 1024-pixel preview edge, and 2 MiB encoded previews. Preset reads paginate; document/layer reads have bounds. Result bodies share a 16 MiB budget while mutation identities survive for the session. PNG artifacts have a separate 32-entry, 16 MiB, 60-second cache; exhausted preview storage does not evict mutation identities.
 
 Use monotonic time for queue deadlines. Record operation ID, command, state transition, queue delay, execution duration, version, and a sanitized error code. Keep logs bounded and omit tokens, image payloads, and document text. Adapter logs go to stderr; stdout is exclusively MCP traffic.
 
 Provide `krita6-mcp doctor` for discovery and version diagnostics and an explicit scratch-document smoke command for actual painting validation. Missing Qt bindings, missing Python plugin support, incompatible protocol, and Krita not running must be distinguishable.
+
+## Optional Krita AI Diffusion integration
+
+The current bridge sees documents and layers created by other plugins through Krita's normal API. It does not control generation, prompts, models, or jobs in [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion). Its current upstream bootstrap explicitly targets Krita 6 ([source](https://github.com/Acly/krita-ai-diffusion/blob/main/ai_diffusion/__init__.py)); this alone does not establish an automation API.
+
+A future optional adapter should detect a supported AI Diffusion version and expose explicit status, generation, job lookup/cancellation, and result-application tools. Probe capabilities on the GUI thread, bind each job to an explicit document, and keep generation completion separate from applying pixels to a layer. Preserve diffusion job IDs across retries and require an explicit backend choice before any cloud submission. Investigate a maintained integration API before coupling to private plugin internals. The core bridge must remain usable without AI Diffusion installed. No diffusion integration or generation test is included in 0.1.0.
