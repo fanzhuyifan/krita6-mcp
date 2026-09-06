@@ -51,7 +51,7 @@ Stopping enters `draining`: reject new work, cancel queued work, and keep the or
 
 Bind only to `127.0.0.1`, using an OS-assigned port. Write one discovery file per bridge instance in a per-user application-state directory. Include `bridge_protocol`, plugin/Krita versions, PID, port, random `instance_id`, and a fresh 256-bit bearer token. Use atomic replacement and owner-only POSIX permissions. Windows is rejected until user-restricted ACL handling is implemented; macOS remains untested. Treat the PID as diagnostic data, not identity. Verify the instance with an authenticated handshake; the adapter ignores stale discovery without deleting another session's files.
 
-The adapter selects an explicit instance when more than one is live. Every command includes its expected `instance_id`, so an old port or a restarted plugin cannot silently receive an edit. Never expose the bearer token through tools, stdout, or logs. Disable proxy use for local bridge requests and reject redirects.
+The status tool discovers all registered instances. Commands and operation/artifact lookups require an explicit instance ID, even when only one instance is live. Every command includes its expected `instance_id`, so an old port or a restarted plugin cannot silently receive an edit. Never expose the bearer token through tools, stdout, or logs. Disable proxy use for local bridge requests and reject redirects.
 
 | Endpoint | Behavior |
 | --- | --- |

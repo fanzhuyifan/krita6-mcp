@@ -180,36 +180,19 @@ class BridgeClient:
             key: value for key, value in session.items() if key not in {"token", "authorization"}
         }
 
-    def _resolve(self, instance_id: str | None) -> tuple[Connection, dict]:
-        if instance_id is not None:
-            self._check_id(instance_id)
-        connections = self._connections()
-        if instance_id is not None:
-            matches = [item for item in connections if item.instance_id == instance_id]
-            if not matches:
-                raise BridgeError(
-                    "INSTANCE_NOT_FOUND", "The requested bridge instance is not registered"
-                )
-            if len(matches) != 1:
-                raise BridgeError(
-                    "INVALID_DISCOVERY", "Multiple records claim the same bridge instance"
-                )
-            connection = matches[0]
-            return connection, self._session(connection)
-        live = []
-        for connection in connections:
-            try:
-                live.append((connection, self._session(connection)))
-            except BridgeError:
-                continue
-        if not live:
-            raise BridgeError("BRIDGE_UNAVAILABLE", "No reachable Krita 6 bridge was discovered")
-        if len(live) > 1:
+    def _resolve(self, instance_id: str) -> tuple[Connection, dict]:
+        self._check_id(instance_id)
+        matches = [item for item in self._connections() if item.instance_id == instance_id]
+        if not matches:
             raise BridgeError(
-                "INSTANCE_REQUIRED",
-                "Multiple Krita bridges are running; provide an instance_id from krita_status",
+                "INSTANCE_NOT_FOUND", "The requested bridge instance is not registered"
             )
-        return live[0]
+        if len(matches) != 1:
+            raise BridgeError(
+                "INVALID_DISCOVERY", "Multiple records claim the same bridge instance"
+            )
+        connection = matches[0]
+        return connection, self._session(connection)
 
     def status(self, instance_id: str | None = None) -> dict:
         if instance_id is not None:
