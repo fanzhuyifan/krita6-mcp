@@ -118,7 +118,7 @@ Run the verification commands in the [testing guide](testing.md). The live harne
 - No current-session self-test runs automatically. AI Diffusion generation/application is verified only on the pinned source and local backend/model above. Backend cancellation, cloud/remote backends, and live/custom/edit-model workflows are outside this implementation.
 - The bridge cannot forcibly interrupt a running native stroke or guarantee a hard deadline for synchronous Krita calls. It retains the execution gate while awaiting native completion.
 - File checks do not provide race-proof filesystem isolation from another process running as the same user. At-most-once dispatch applies within a live plugin instance, not across a Krita crash.
-- Layer creation, property changes, selection edits, copying/reordering, imports, and raster transforms have no promised undo grouping. The implementation provides native stroke undo metadata but no MCP undo tool. Per-tool output schemas and automatic plugin installation remain future work.
+- Layer creation, property changes, selection edits, copying/reordering, imports, and raster transforms have no promised undo grouping. The implementation provides native stroke undo metadata and the single-step `krita_edit_history` tool. The general-editing probe below validates that tool against native shape history; it includes user edits and does not create undo transactions for direct writes. Per-tool output schemas and automatic plugin installation remain future work.
 
 ## AI Diffusion configuration
 
