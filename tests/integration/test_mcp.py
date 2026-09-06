@@ -47,6 +47,20 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             elif request["command"] == "create_document":
                 result = {"document_id": "scratch"}
                 effect = "applied"
+            elif request["command"] == "diffusion_status":
+                result = {"available": False, "reason": "PLUGIN_NOT_LOADED"}
+                effect = "none"
+            elif request["command"] == "inspect_diffusion_document":
+                result = {"document_id": request["target"]["document_id"], "model_present": False}
+                effect = "none"
+            elif request["command"] == "list_diffusion_jobs":
+                result = {
+                    "document_id": request["target"]["document_id"],
+                    "jobs": [],
+                    "offset": request["params"]["offset"],
+                    "next_offset": None,
+                }
+                effect = "none"
             else:
                 result = {"documents": []}
                 effect = "none"
@@ -64,14 +78,64 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             listed = await client.list_tools()
             tools = listed.tools if hasattr(listed, "tools") else listed
             by_name = {tool.name: tool for tool in tools}
-            assert len(by_name) == 13
+            assert len(by_name) == 16
             assert by_name["krita_status"].annotations.read_only_hint
+            diffusion_tools = {
+                "krita_diffusion_status",
+                "krita_inspect_diffusion_document",
+                "krita_list_diffusion_jobs",
+            }
+            assert {name for name in by_name if "diffusion" in name} == diffusion_tools
+            for name in diffusion_tools:
+                assert by_name[name].annotations.read_only_hint
+                assert not by_name[name].annotations.destructive_hint
+                assert "operation_id" not in by_name[name].input_schema["properties"]
             assert "operation_id" in by_name["krita_paint_path"].input_schema["required"]
             assert "pressure" not in by_name["krita_paint_path"].input_schema["properties"]
             status = await client.call_tool("krita_status", {})
             assert not status.is_error
             assert status.structured_content["available"]
             assert discovery["token"] not in str(status)
+            diffusion = await client.call_tool(
+                "krita_diffusion_status", {"instance_id": "integration"}
+            )
+            assert not diffusion.is_error
+            assert diffusion.structured_content["effect"] == "none"
+            assert diffusion.structured_content["result"] == {
+                "available": False,
+                "reason": "PLUGIN_NOT_LOADED",
+            }
+            diffusion_document = await client.call_tool(
+                "krita_inspect_diffusion_document",
+                {"instance_id": "integration", "document_id": "scratch"},
+            )
+            assert not diffusion_document.is_error
+            assert diffusion_document.structured_content["result"]["document_id"] == "scratch"
+            for page in ({}, {"offset": 12, "limit": 10}):
+                jobs = await client.call_tool(
+                    "krita_list_diffusion_jobs",
+                    {"instance_id": "integration", "document_id": "scratch", **page},
+                )
+                assert not jobs.is_error
+                assert jobs.structured_content["effect"] == "none"
+                assert jobs.structured_content["result"]["offset"] == page.get("offset", 0)
+            for invalid_page in ({"offset": True}, {"offset": 2**31}, {"limit": 101}, {"limit": 0}):
+                jobs = await client.call_tool(
+                    "krita_list_diffusion_jobs",
+                    {"instance_id": "integration", "document_id": "scratch", **invalid_page},
+                )
+                assert jobs.is_error
+            for name, forbidden in (
+                ("krita_diffusion_status", {"connect": True}),
+                (
+                    "krita_inspect_diffusion_document",
+                    {"document_id": "scratch", "prompt": "generate"},
+                ),
+                ("krita_list_diffusion_jobs", {"document_id": "scratch", "cancel": True}),
+            ):
+                rejected = await client.call_tool(name, {"instance_id": "integration", **forbidden})
+                assert rejected.is_error
+                assert rejected.structured_content["error"]["code"] == "INVALID_PARAMETERS"
             params = {
                 "instance_id": "integration",
                 "operation_id": "make-scratch",
@@ -105,6 +169,18 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
     try:
         asyncio.run(scenario())
         assert len([item for item in dispatched if item["command"] == "create_document"]) == 1
+        diffusion_reads = [item for item in dispatched if "diffusion" in item["command"]]
+        assert [item["command"] for item in diffusion_reads] == [
+            "diffusion_status",
+            "inspect_diffusion_document",
+            "list_diffusion_jobs",
+            "list_diffusion_jobs",
+        ]
+        assert diffusion_reads[0]["target"] == diffusion_reads[0]["params"] == {}
+        assert diffusion_reads[1]["target"] == {"document_id": "scratch"}
+        assert diffusion_reads[2]["params"] == {"offset": 0, "limit": 50}
+        assert diffusion_reads[3]["params"] == {"offset": 12, "limit": 10}
+        assert ledger.status()["mutations"] == 1
     finally:
         stop.set()
         thread.join(timeout=2)

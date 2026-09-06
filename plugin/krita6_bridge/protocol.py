@@ -15,7 +15,15 @@ MUTATIONS = frozenset(
         "export_png",
     }
 )
-COMMANDS = MUTATIONS | {"list_documents", "inspect_document", "get_preview", "list_brush_presets"}
+COMMANDS = MUTATIONS | {
+    "list_documents",
+    "inspect_document",
+    "get_preview",
+    "list_brush_presets",
+    "diffusion_status",
+    "inspect_diffusion_document",
+    "list_diffusion_jobs",
+}
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
 
@@ -112,14 +120,27 @@ def validate_request(body, instance_id):
         if c in {"paint_path", "paint_line"}
         else {"document_id"}
         if c
-        in {"inspect_document", "get_preview", "create_paint_layer", "save_document", "export_png"}
+        in {
+            "inspect_document",
+            "get_preview",
+            "create_paint_layer",
+            "save_document",
+            "export_png",
+            "inspect_diffusion_document",
+            "list_diffusion_jobs",
+        }
         else set()
     )
     target = _object(r.get("target", {}), target_fields, target_fields)
     for k, v in target.items():
         validate_id(v, k)
     p = r.get("params", {})
-    if c in {"list_documents", "inspect_document"}:
+    if c in {
+        "list_documents",
+        "inspect_document",
+        "diffusion_status",
+        "inspect_diffusion_document",
+    }:
         p = _object(p, set())
     elif c == "get_preview":
         p = _object(p, {"max_edge"})
@@ -127,6 +148,10 @@ def validate_request(body, instance_id):
     elif c == "list_brush_presets":
         p = _object(p, {"query", "offset", "limit"})
         p["query"] = _string(p.get("query", ""), 0, 256, "query")
+        p["offset"] = _integer(p.get("offset", 0), 0, 2**31 - 1, "offset")
+        p["limit"] = _integer(p.get("limit", 50), 1, 100, "limit")
+    elif c == "list_diffusion_jobs":
+        p = _object(p, {"offset", "limit"})
         p["offset"] = _integer(p.get("offset", 0), 0, 2**31 - 1, "offset")
         p["limit"] = _integer(p.get("limit", 50), 1, 100, "limit")
     elif c == "create_document":

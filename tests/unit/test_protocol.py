@@ -101,6 +101,9 @@ def test_catalog_samples_cover_every_command():
         "inspect_document": (doc, {}),
         "get_preview": (doc, {}),
         "list_brush_presets": ({}, {}),
+        "diffusion_status": ({}, {}),
+        "inspect_diffusion_document": (doc, {}),
+        "list_diffusion_jobs": (doc, {}),
         "create_document": ({}, {"width": 4096, "height": 4096, "name": "Scratch"}),
         "create_paint_layer": (doc, {"name": "Paint"}),
         "paint_path": ({**doc, "node_id": "node-1"}, {**brush, "points": [[1, 1], [2, 2]]}),
@@ -144,3 +147,54 @@ def test_preview_bounds(params):
         validate_request(
             request("get_preview", target={"document_id": "doc-1"}, params=params), "instance-a"
         )
+
+
+@pytest.mark.parametrize(
+    "command,target,expected_params",
+    [
+        ("diffusion_status", {}, {}),
+        ("inspect_diffusion_document", {"document_id": "doc-1"}, {}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"offset": 0, "limit": 50}),
+    ],
+)
+def test_diffusion_reads_have_bounded_defaults_and_are_not_mutations(
+    command, target, expected_params
+):
+    result = validate_request(request(command, target=target), "instance-a")
+    assert result["target"] == target
+    assert result["params"] == expected_params
+    assert command not in MUTATIONS
+
+
+@pytest.mark.parametrize(
+    "command,target,params",
+    [
+        ("diffusion_status", {"document_id": "doc-1"}, {}),
+        ("diffusion_status", {}, {"connect": True}),
+        ("inspect_diffusion_document", {}, {}),
+        ("inspect_diffusion_document", {"document_id": "doc-1"}, {"prompt": "new image"}),
+        ("list_diffusion_jobs", {}, {}),
+        ("list_diffusion_jobs", {"document_id": "doc-1", "node_id": "node-1"}, {}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"cancel": True}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"offset": True}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"offset": -1}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"offset": 2**31}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"limit": True}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"limit": 0}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"limit": 101}),
+        ("list_diffusion_jobs", {"document_id": "doc-1"}, {"limit": 5.0}),
+    ],
+)
+def test_diffusion_reads_reject_mutating_arguments_and_invalid_pagination(command, target, params):
+    with pytest.raises(BridgeError) as error:
+        validate_request(request(command, target=target, params=params), "instance-a")
+    assert error.value.code == "INVALID_REQUEST"
+    assert error.value.effect == "none"
+
+
+def test_diffusion_job_page_accepts_exact_upper_bounds():
+    params = {"offset": 2**31 - 1, "limit": 100}
+    normalized = validate_request(
+        request("list_diffusion_jobs", target={"document_id": "doc-1"}, params=params), "instance-a"
+    )
+    assert normalized["params"] == params

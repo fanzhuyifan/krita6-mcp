@@ -48,7 +48,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
     server = MCPServer(
         "krita6-mcp",
         version="0.1.0",
-        instructions="Inspect krita_status first. Select explicit instance/document/layer handles. Reuse operation_id for retries of the same edit. Pending operations require reconciliation with krita_get_operation; a timeout never proves that nothing changed. Host capabilities report validation limits.",
+        instructions="Inspect krita_status first. Select explicit instance/document/layer handles. Use krita_diffusion_status to discover an already loaded Krita AI Diffusion plugin before inspecting its document metadata or existing jobs. Diffusion tools are read-only and do not load plugins, create diffusion models, connect backends, or generate images. Reuse operation_id for retries of the same edit. Pending operations require reconciliation with krita_get_operation; a timeout never proves that nothing changed. Host capabilities report validation limits.",
     )
 
     async def call(method, *args, **kwargs) -> CallToolResult:
@@ -92,6 +92,35 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
     ) -> CallToolResult:
         """Inspect document dimensions, color space, editability and layer UUIDs."""
         return await execute("inspect_document", instance_id, target={"document_id": document_id})
+
+    @server.tool(annotations=READ_ONLY)
+    async def krita_diffusion_status(instance_id: Identifier) -> CallToolResult:
+        """Discover an already loaded Krita AI Diffusion plugin and report integration availability. Does not load plugins or connect to a backend."""
+        return await execute("diffusion_status", instance_id)
+
+    @server.tool(annotations=READ_ONLY)
+    async def krita_inspect_diffusion_document(
+        instance_id: Identifier, document_id: Identifier
+    ) -> CallToolResult:
+        """Read existing AI Diffusion metadata for the explicit document. Does not create diffusion models, change settings, or generate images."""
+        return await execute(
+            "inspect_diffusion_document", instance_id, target={"document_id": document_id}
+        )
+
+    @server.tool(annotations=READ_ONLY)
+    async def krita_list_diffusion_jobs(
+        instance_id: Identifier,
+        document_id: Identifier,
+        offset: Annotated[int, Field(ge=0, le=2**31 - 1, strict=True)] = 0,
+        limit: Annotated[int, Field(ge=1, le=100, strict=True)] = 50,
+    ) -> CallToolResult:
+        """Read a bounded page of existing AI Diffusion job metadata for the document. Does not submit, cancel, or apply jobs."""
+        return await execute(
+            "list_diffusion_jobs",
+            instance_id,
+            target={"document_id": document_id},
+            params={"offset": offset, "limit": limit},
+        )
 
     @server.tool(annotations=READ_ONLY)
     async def krita_get_preview(

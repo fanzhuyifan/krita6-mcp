@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import QApplication
 from krita import InfoObject, Krita, ManagedColor, Preset
 
 from .protocol import BridgeError, COMMANDS
+from .diffusion import DiffusionReader
 
 
 SRGB_PROFILE = "sRGB-elle-V2-srgbtrc.icc"
@@ -106,6 +107,7 @@ class KritaHost:
         self.output_roots = {name: Path(path) for name, path in output_roots.items()}
         self._documents = {}
         self._presets = {}
+        self._diffusion = DiffusionReader(self._assert_gui_thread)
 
     @staticmethod
     def _assert_gui_thread():
@@ -153,6 +155,7 @@ class KritaHost:
                     "nodes_per_document": MAX_LAYER_NODES,
                 },
                 "output_roots": sorted(self.output_roots),
+                "ai_diffusion": self._diffusion.capabilities(),
             },
         }
 
@@ -175,6 +178,9 @@ class KritaHost:
             "paint_line": self._paint_line,
             "save_document": self._save_document,
             "export_png": self._export_png,
+            "diffusion_status": self._diffusion_status,
+            "inspect_diffusion_document": self._inspect_diffusion_document,
+            "list_diffusion_jobs": self._list_diffusion_jobs,
         }
         if command not in handlers:
             raise BridgeError("UNKNOWN_COMMAND", "This host does not support the command.")
@@ -182,6 +188,19 @@ class KritaHost:
         if isinstance(result, Pending):
             return result
         return result
+
+    def _diffusion_status(self, target, params):
+        return self._diffusion.status()
+
+    def _inspect_diffusion_document(self, target, params):
+        document = self._document(target["document_id"])
+        return self._diffusion.inspect_document(target["document_id"], document)
+
+    def _list_diffusion_jobs(self, target, params):
+        document = self._document(target["document_id"])
+        return self._diffusion.list_jobs(
+            target["document_id"], document, params.get("offset", 0), params.get("limit", 50)
+        )
 
     def _reconcile_documents(self):
         fresh = self.app.documents()
