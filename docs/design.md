@@ -8,7 +8,7 @@ Build a local MCP server for deliberate, observable editing in a running Krita 6
 
 The first release covers document inspection/creation, paint layers, native paths and lines, bounded canvas previews, `.kra` saving, and PNG export. Target Krita 6 with Python plugin support; start with the installed Linux package. Krita 5 compatibility, remote network service, headless rendering, animation, arbitrary Python execution, general action triggering, and model/image-generation backends are outside the first release.
 
-The initial workflow is implemented and tested on Linux with Krita 6.0.3. The [validation record](validation.md) distinguishes verified behavior from remaining gates. Source-level findings are in [research](research.md); future work remains in the [implementation plan](implementation-plan.md).
+The initial workflow is implemented and tested on Linux with Krita 6.0.3. The [validation record](validation.md) distinguishes verified behavior from remaining gates. Background sources are listed in [references and acknowledgments](research.md); future work remains in the [implementation plan](implementation-plan.md).
 
 ## Architecture
 
