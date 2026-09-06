@@ -1,6 +1,10 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*/
+.env
+.env.*
+!.env.example
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
@@ -12,3 +16,4 @@ htmlcov/
 .local/
 *.kra
 *.kra~
+.DS_Store

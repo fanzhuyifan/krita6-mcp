@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible problem with the bridge or MCP tools.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first. For security vulnerabilities, follow SECURITY.md instead of posting details here.
+        Share a small scratch-document reproduction. Remove tokens, discovery files, private paths, prompts, and personal artwork from logs or attachments.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe the actual result and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions and platform
+      description: Include all known versions; mark unavailable details as unknown.
+      placeholder: |
+        Bridge version or commit:
+        Krita version and installation source:
+        OS and display backend:
+        External Python version:
+        MCP client and version:
+        Qt / PyQt versions, if known:
+        AI Diffusion version or commit, if relevant:
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the tool name, sanitized arguments, scratch document settings, and whether the issue repeats. For uncertain edits, include operation state and retry behavior without submitting a fresh operation just to reproduce it.
+      placeholder: |
+        1. Create a scratch document with...
+        2. Call...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized diagnostics or test result
+      description: Relevant error codes, doctor output, or a minimal log excerpt. Attach only files you are comfortable making public.
+      render: text

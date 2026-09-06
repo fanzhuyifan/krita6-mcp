@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a concrete workflow or improvement.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the implementation plan and existing issues before proposing a feature.
+        Examples should use scratch artwork and contain no credentials or private material.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What workflow needs support?
+      description: Describe the task, the current limitation, and who would use the improvement.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Give a concrete input and expected result. Mention effects on documents, files, existing jobs, or external services when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Relevant versions and platform
+      description: Include your Krita, bridge, OS, and optional plugin/backend versions, or say that the request is platform-independent.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or related work
+      description: Existing workarounds, upstream API references, or other implementations worth considering.

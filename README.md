@@ -1,8 +1,10 @@
 # krita6-mcp
 
+[![CI](https://github.com/fanzhuyifan/krita6-mcp/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/fanzhuyifan/krita6-mcp/actions/workflows/ci.yml)
+
 An MCP server that lets an assistant inspect and edit a running Krita 6 desktop session, paint with Krita's native brushes, and see the result.
 
-**Status: initial implementation, 0.1.0.** Linux is the first validation target. See [validation evidence and limits](docs/validation.md) before relying on other builds or platforms.
+**Early alpha: 0.1.0, unreleased.** The native workflow has been tested on Linux/Krita 6.0.3 with small scratch documents and one pixel-brush preset. Large-document and long-session testing remains limited. See [validation evidence and limits](docs/validation.md) for the tested configurations.
 
 The system has two parts: an external Python MCP server and a PyQt6 plugin inside Krita. The plugin executes Krita calls on the GUI thread; the external server handles MCP and tool schemas. MCP dependencies are never installed into Krita's embedded Python.
 
@@ -36,6 +38,8 @@ These calls do not load the plugin, create a diffusion model, connect to a backe
 Requirements: Krita 6 with Python plugin support and PyQt6, external Python 3.10+, and [uv](https://docs.astral.sh/uv/). The current discovery implementation requires POSIX file permissions; Windows support is not implemented. macOS is untested.
 
 ```bash
+git clone https://github.com/fanzhuyifan/krita6-mcp.git
+cd krita6-mcp
 uv sync --locked
 uv run python tools/build_plugin.py
 ```
@@ -43,6 +47,8 @@ uv run python tools/build_plugin.py
 In Krita, use **Tools → Scripts → Import Python Plugin from File** and select `dist/krita6-bridge-0.1.0.zip`. Enable **Krita 6 MCP Bridge** in **Settings → Configure Krita → Python Plugin Manager**, then restart Krita. Alternatively, copy the folder and `.desktop` file from `plugin/` into the `pykrita/` directory under Krita's resource folder and enable the plugin.
 
 The enabled plugin starts automatically. **Tools → Scripts** contains Start, Stop, and Status controls. Set `KRITA6_MCP_AUTOSTART=0` in Krita's environment to start it manually. Stop drains any running native operation before allowing a new bridge session.
+
+For an upgrade, stop the bridge, close Krita, and back up the existing plugin directory before replacing it. To uninstall, disable the plugin, restart Krita, and remove its `krita6_bridge/` folder and `krita6_bridge.desktop` file from the resource folder's `pykrita/` directory. Remove the MCP client's configuration separately. Your artwork and output directories are not part of the plugin installation.
 
 Check the connection from the checkout:
 
@@ -93,14 +99,17 @@ uv build
 
 Tests use local loopback sockets, so the runner needs local-network permission. Unit/fake-host tests do not prove native painting compatibility.
 
+CI runs the non-GUI suite and distribution builds on Python 3.10, 3.12, and 3.14. It does not run Krita or establish native-host support. See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture, review expectations, and test selection.
+
 On Linux, the live checks require `krita`, `Xvfb`/`xvfb-run`, `xauth`, and `dbus-run-session`:
 
 ```bash
 uv run python tools/probe_krita.py
 uv run python tools/smoke_krita.py
+uv run python tools/probe_plugin_import.py
 ```
 
-Both create disposable profiles, a virtual X display, and a private temporary socket directory. They do not install into the normal Krita profile. The first checks native pixels, resource capture, undo/redo, preview state, and `.kra` round-trip. The second drives the production plugin through real MCP stdio. Each prints the location of its report and test artwork. `--output` selects a new artifact directory; keep reports/logs outside Git unless deliberately sanitized for validation evidence.
+The first two create disposable profiles, a virtual X display, and a private temporary socket directory. They do not install into the normal Krita profile. The first checks native pixels, resource capture, undo/redo, preview state, and `.kra` round-trip. The second drives the production plugin through real MCP stdio. Each prints the location of its report and test artwork. `--output` selects a new artifact directory; keep reports/logs outside Git unless deliberately sanitized for validation evidence. The third uses Krita's installed importer to extract the ZIP into a temporary directory; pass `--importer` if that module is installed at a different path.
 
 For the optional diffusion reader, use a checkout of the exact development commit above, including its `ai_diffusion/websockets` submodule:
 
@@ -116,5 +125,19 @@ The probe verifies source fingerprints, loads the real plugin in an isolated pro
 - [Existing implementations and API evidence](docs/research.md)
 - [Implementation milestones and validation gates](docs/implementation-plan.md)
 - [Contributor guidance](AGENTS.md)
+- [Contributing and development](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+- [Maintainer release procedure](docs/releasing.md)
 
 Keep protocol changes and host behavior documented together. Unimplemented capabilities are not silently emulated with a different rendering backend.
+
+## Contributing and support
+
+Bug reports, small focused pull requests, and reproducible compatibility results are welcome. Start with an issue for substantial API changes. Use [GitHub issues](https://github.com/fanzhuyifan/krita6-mcp/issues) for bugs and feature requests; use the [security policy](SECURITY.md) for vulnerabilities. Do not upload discovery tokens, private logs, credentials, or artwork without permission. The default development branch is `master`.
+
+## License and acknowledgments
+
+[MIT](LICENSE), copyright 2026 Yifan Zhu and contributors. This is an independent project, not an official KDE/Krita or Krita AI Diffusion integration. Krita, the MCP SDK, and optional plugins retain their own licenses. They are not bundled in the plugin ZIP.
+
+The design builds on Krita's public scripting APIs and ideas from existing MCP integrations. The [research record](docs/research.md) credits those projects and separates source observations from live validation. No third-party implementation source was copied into this repository.
