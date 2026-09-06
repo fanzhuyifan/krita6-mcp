@@ -22,9 +22,9 @@ uv run python tools/build_plugin.py
 
 CI repeats non-GUI checks on Python 3.10, 3.12, and 3.14. Wait for those jobs on the actual commit; local success alone does not prove the GitHub workflow passed. Check the wheel's license metadata and contents, and ensure neither wheel nor source archive contains private profiles, secrets, downloaded upstream plugins, environments, or artwork outside the deliberate small validation fixtures.
 
-On each advertised host/build, run `tools/probe_krita.py`, `tools/smoke_krita.py`, and `tools/probe_plugin_import.py` as described in the README. These use scratch resources. The ZIP must include an explicit `krita6_bridge/` directory entry, its `.desktop` file, runtime modules, manual, and MIT license. The importer probe uses the installed Krita importer; it does not modify a normal profile. Retain sanitized evidence and disclose any gates not run.
+On each advertised host/build, run `tools/probe_krita.py`, `tools/smoke_krita.py`, and `tools/probe_plugin_import.py` as described in the [testing guide](testing.md). These use scratch resources. The ZIP must include an explicit `krita6_bridge/` directory entry, its `.desktop` file, runtime modules, manual, and MIT license. The importer probe uses the installed Krita importer; it does not modify a normal profile. Retain sanitized evidence and disclose any gates not run.
 
-Changes to AI Diffusion observation also require its pinned development-plugin probe. Generation remains out of scope until an actual backend workflow and ownership semantics have been validated. Do not count synthetic jobs as generation evidence.
+Changes to AI Diffusion observation also require its [pinned development-plugin probe](testing.md#ai-diffusion-observation). Generation remains out of scope until an actual backend workflow and ownership semantics have been validated. Do not count synthetic jobs as generation evidence.
 
 ## Publish a release
 

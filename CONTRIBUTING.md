@@ -35,16 +35,9 @@ Keep commands typed, bounded, and explicit about their document/layer targets. D
 
 ## Native validation
 
-Native painting, completion, undo, color handling, and optional plugin compatibility require live-host evidence. Use the isolated Linux harnesses described in the [README](README.md#development-and-verification):
+Native painting, completion, undo, color handling, and optional plugin compatibility require live-host evidence. Follow the [testing guide](docs/testing.md) for Linux prerequisites, a clean host environment, isolated scratch-document harnesses, and the pinned AI Diffusion procedure. Never run host tests against personal artwork or a normal Krita profile. Synthetic diffusion jobs do not establish backend generation support.
 
-```bash
-.venv/bin/python tools/probe_krita.py
-.venv/bin/python tools/smoke_krita.py
-```
-
-They isolate XDG profiles and `TMPDIR`, create a private display/session, and use scratch documents. Never run host tests against personal artwork or a normal Krita profile. For AI Diffusion observation changes, follow the pinned-source procedure in the README and run `tools/probe_diffusion.py`; its synthetic jobs do not establish backend generation support.
-
-Record the exact Krita, Qt/PyQt, Python, platform, and relevant plugin/preset versions with the checks performed. State what remains untested. Keep generated reports and profiles out of Git unless a small, deliberately sanitized artifact is needed in `docs/validation/`. Never commit tokens, discovery files, personal artwork, environments, build output, or raw profile logs.
+Record exact versions and remaining limits as described in the guide. Keep private files and unsanitized test output out of Git.
 
 ## Pull requests
 
