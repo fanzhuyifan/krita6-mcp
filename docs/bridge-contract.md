@@ -27,15 +27,26 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | get_diffusion_result | document_id | generation_id, result_id, max_edge: int=1024 (32..1024) |
 | apply_diffusion_result | document_id | generation_id, result_id |
 | get_preview | document_id | max_edge: int=1024 (32..1024) |
+| get_region_preview | document_id | x,y: nonnegative int, width,height: int (1..8192, product <=16777216), max_edge: int=1024 (32..1024) |
+| activate_document | document_id | empty |
+| clear_selection | document_id | empty |
+| set_selection | document_id | shape: rectangle with x,y,width,height as above, or polygon with 3..256 integer [x,y] points |
+| set_layer_properties | document_id,node_id | at least one of name: str (1..128), visible: bool, opacity: finite number (0..1) |
+| copy_layer | document_id,node_id | destination_document_id, name: str (1..128), parent_node_id/above_node_id: optional identifiers in destination |
+| move_layer | document_id,node_id | parent_node_id/above_node_id: optional identifiers in same document |
+| transform_layer | document_id,node_id | pivot: [finite x,y] (-32768..32768), translate_x/translate_y: finite number=0 (-32768..32768), scale_x/scale_y: finite number=1 (0.01..16), rotation_degrees: finite number=0 (-360..360) |
+| open_document | empty | root: identifier, path: str (1..4096 characters), bounded PNG/JPEG/KRA |
+| import_image_layer | document_id | root: identifier, path: str (1..4096 characters), name: str (1..128), x,y: nonnegative int, bounded PNG/JPEG |
 | list_brush_presets | empty | query: str="" (0..256 characters), offset: int=0 (0..2147483647), limit: int=50 (1..100) |
 | create_document | empty | width,height: int (1..8192, product <=16777216), name: str (1..128 characters) |
 | create_paint_layer | document_id | name: str (1..128 characters), parent_node_id: optional identifier |
 | paint_path | document_id,node_id | preset_id, size_px: finite number (0.1..1000), opacity: finite number (0..1), color: #RRGGBB, points: list of 2..2048 [finite x,y] pairs |
 | paint_line | document_id,node_id | same brush settings, start/end: [int x,y] pairs (signed 32-bit components), pressure_start/pressure_end: finite number=1 (0..1) |
+| paint_bezier_path | document_id,node_id | same brush settings, start: [finite x,y], segments: 1..256 triples [control1, control2, end] of [finite x,y] points |
 | save_document | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 | export_png | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 
-There are eight mutations: `create_document`, `create_paint_layer`, `paint_path`, `paint_line`, `save_document`, `export_png`, `generate_diffusion`, and `apply_diffusion_result`. The other ten commands are reads. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
+There are eighteen mutation commands: the eight original authoring/diffusion mutations plus activation, selection clearing/replacement, layer properties/copying/moving/transforms, document opening, image import, and Bézier painting. Eleven commands are reads, including region preview. The MCP catalog adds status and operation lookup/cancellation for 32 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
 
 ## Operation ledger
 
@@ -82,11 +93,11 @@ Protocol failures return `{error:{code,message,effect}}` with an appropriate HTT
 
 ## Host and executor
 
-`KritaHost(artifacts, output_roots)` provides `session_info() -> dict` and `execute(request) -> dict or Pending`. Every method touching Krita verifies the GUI thread. Document IDs are instance-local handles reconciled against fresh document enumeration using equality. Node UUIDs omit braces and are resolved in the requested document. Presets are instance-local handles backed by a resource signature; changed resources require re-listing. The catalog lists every matching preset with `engine` and `supported_for_painting`, but painting currently accepts only the `paintbrush` engine.
+`KritaHost(artifacts, output_roots, input_roots=None)` provides `session_info() -> dict` and `execute(request) -> dict or Pending`. Every method touching Krita verifies the GUI thread. Document IDs are instance-local handles reconciled against fresh document enumeration using equality. Node UUIDs omit braces and are resolved in the requested document. Presets are instance-local handles backed by a resource signature; changed resources require re-listing. The catalog lists every matching preset with `engine` and `supported_for_painting`, but painting currently accepts only the `paintbrush` engine.
 
 Document creation uses RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc` at 72 DPI and attaches an active view. Creation is capped at 32 currently open documents and 4096 layer/mask nodes per document, counting user-created objects as well. Inspection returns document metadata, selection bounds, frame, active node and a flat layer list with parent_node_id; layer inspection also stops at 4096 nodes. Document listing is not paginated; preset listing is.
 
-Painting requires the target's active view, matching RGBA/U8/sRGB document and node, zero origin/offset, an unanimated paint layer, no nonempty selection, unlocked/visible ancestry, and no layer alpha lock or alpha inheritance. The host applies explicit brush settings, invokes one native `paintPath` or `paintLine`, then synchronously restores the original view settings and active node before yielding. Paths do not accept pressure samples; lines use integer QPoint endpoints and endpoint pressure.
+Painting requires the target's active view, matching RGBA/U8/sRGB document and node, zero origin/offset, an unanimated paint layer, no nonempty selection, unlocked/visible ancestry, and no layer alpha lock or alpha inheritance. The host applies explicit brush settings, invokes one native `paintPath` or `paintLine`, then synchronously restores the original view settings and active node before yielding. Paths and cubic Bézier paths do not accept pressure samples; lines use integer QPoint endpoints and endpoint pressure. A Bézier request constructs one QPainterPath from its starting point and cubic control/end points; every control point must be inside the canvas, and the normal native completion/restoration/undo contract applies.
 
 `Pending.poll() -> dict or None` runs on the GUI thread, re-resolves the document and checks `tryBarrierLock()` followed immediately by `unlock()`. It has no native deadline. A document closed before settlement produces `OUTCOME_UNKNOWN`. `GuiExecutor` uses a GUI-owned 20 ms QTimer to execute/poll one operation at a time, retaining the execution gate until settlement. No recursive event pumping or socket waits occur in the executor; synchronous host calls can still block Krita. Oversized/non-JSON host results become `HOST_RESULT_INVALID`, with mutation effect unknown.
 
@@ -99,6 +110,20 @@ Save uses `saveAs` for a relative `.kra` destination; export uses `exportImage` 
 Capability metadata identifies Linux/Krita 6.0.3 as the verified reference workflow and reports `session_self_test: false`. Settings restoration is immediate without a GUI yield; native undo is described as one stroke on the reference build. Preview profile conversion remains unspecified. See [retained evidence and limits](validation.md). Tests invoke fixed Undo/Redo internally in an isolated profile; there is no public undo tool.
 
 Failures after native dispatch, including restoration failures, retain a `Pending` barrier carrying the eventual error until the document settles or closes. Draining uses the same gate. After shutdown or partial startup, the extension explicitly disposes the GUI executor, disconnects its timer, clears host/ledger references, and schedules Qt deletion, avoiding retention across repeated bridge sessions.
+
+## Reference editing
+
+`EditingMixin` implements the typed editing commands on the GUI thread. Activation finds an existing view of the explicit document, preferring the active window; it does not create additional views. Selection and layer editing require zero document origin/offset. Selection replacement supports a full-opacity rectangle or a hard polygon mask with odd-even fill, and clearing uses `Document.setSelection(None)`. Native painting still rejects a nonempty selection.
+
+Layer property/copy/move/transform commands accept unlocked, nonanimated paint layers without children or masks. Destination parents must be unlocked, visible groups; an insertion sibling must belong to that parent. Copy and transform also require standard RGBA/U8/sRGB pixels and reject alpha lock/inheritance. Copy uses native duplication, preserves the source, and attaches a new layer to the explicit destination; move reparents/reorders within one document. Opacity input is 0..1 and becomes a rounded 0..255 integer in results and inspection.
+
+Affine transforms read only the layer's bounded pixels, then scale and rotate clockwise about the explicit image-space pivot before translation. Qt smooth interpolation produces a new raster buffer. The transformed bounds must be completely inside the canvas and satisfy the 8192-side/16-megapixel limit; old pixels are cleared before the new buffer is written. This is a destructive pixel transform, not an editable transform mask. The raw conversion path requires little-endian RGBA/U8/sRGB. Selection/layer/pixel mutations refresh the projection and use the native completion barrier, including when an error occurs after mutation. Their result includes `undo: "not_guaranteed"`; no general undo transaction is promised.
+
+Region previews read `Document.projection(x,y,width,height)` with explicit bounded in-canvas coordinates and optionally downsample to a maximum edge of 1024. `source_bounds` describes the crop, `source_offset` is its image-space origin, and `scale` converts region pixels to preview pixels. Returned images use the usual artifact cache and inline MCP transport, including after a pending read is reconciled. Profile/alpha metadata reports Krita's projection API; exact standard-sRGB fixture colors establish only the tested path.
+
+`KRITA6_MCP_INPUT_ROOTS` has the same named-root configuration shape as output roots, but is independent and empty by default. Input checks require an existing regular file inside the canonical root, reject traversal/escaping symlinks/special files, and enforce resolved suffix and size limits. Opening accepts PNG/JPEG/KRA up to 64 MiB; image-layer import accepts PNG/JPEG up to 32 MiB. Decoded images are at most 8192 pixels per side and 16 megapixels. KRA archives also have bounded manifests, entry counts, and declared expanded size before native loading. These checks do not provide race-proof filesystem isolation.
+
+Image import decodes using QImageReader, converts embedded profiles to sRGB or assumes sRGB when untagged, and writes a new top paint layer at the explicit in-canvas offset. Document opening uses native batch-mode loading, restores prior batch mode, and attaches a view; the open-document count remains capped at 32. Failures after a document opens report partial/unknown effect and preserve its handle where known.
 
 ## Optional diffusion reads
 

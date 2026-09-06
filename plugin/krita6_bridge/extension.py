@@ -13,6 +13,7 @@ from .executor import GuiExecutor
 from .host import KritaHost
 from .operations import OperationLedger
 from .output_paths import parse_output_roots
+from .input_paths import parse_input_roots
 from .protocol import BridgeError
 from .transport import ArtifactStore, BridgeServer
 
@@ -53,7 +54,8 @@ class KritaBridgeExtension(Extension):
         try:
             roots = parse_output_roots(os.environ.get("KRITA6_MCP_OUTPUT_ROOTS", "{}"))
             artifacts = ArtifactStore()
-            self.host = KritaHost(artifacts, roots)
+            input_roots = parse_input_roots(os.environ.get("KRITA6_MCP_INPUT_ROOTS", "{}"))
+            self.host = KritaHost(artifacts, roots, input_roots)
             self.ledger = OperationLedger("instance-" + uuid.uuid4().hex)
             self.server = BridgeServer(self.ledger, self.host.session_info(), artifacts)
             self.executor = GuiExecutor(

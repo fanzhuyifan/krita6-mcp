@@ -1,7 +1,24 @@
 """Dependency-free validation for the private, versioned bridge protocol."""
 
-import math
 import re
+
+from .protocol_validation import (
+    BridgeError,
+    _integer,
+    _invalid,
+    _number,
+    _object,
+    _point,
+    _string,
+    validate_id,
+)
+from .editing_protocol import (
+    EDITING_COMMANDS,
+    EDITING_MUTATIONS,
+    LAYER_COMMANDS,
+    DOCUMENT_COMMANDS,
+    validate_editing,
+)
 
 PROTOCOL_VERSION = 1
 PLUGIN_VERSION = "0.1.0"
@@ -10,6 +27,7 @@ MUTATIONS = frozenset(
         "create_document",
         "create_paint_layer",
         "paint_path",
+        "paint_bezier_path",
         "paint_line",
         "save_document",
         "export_png",
@@ -29,68 +47,10 @@ COMMANDS = MUTATIONS | {
     "get_diffusion_generation",
     "get_diffusion_result",
 }
-_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
 
-
-class BridgeError(Exception):
-    def __init__(self, code, message, effect="none"):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.effect = effect
-
-
-def _invalid(message):
-    raise BridgeError("INVALID_REQUEST", message)
-
-
-def validate_id(value, field="identifier"):
-    if not isinstance(value, str) or not _ID.fullmatch(value):
-        _invalid(field + " must be a bounded identifier")
-    return value
-
-
-def _object(value, allowed, required=()):
-    if not isinstance(value, dict):
-        _invalid("Expected a JSON object")
-    if set(value) - set(allowed):
-        _invalid("Unknown object fields")
-    if set(required) - set(value):
-        _invalid("Missing required fields")
-    return dict(value)
-
-
-def _integer(value, low, high, field):
-    if type(value) is not int or not low <= value <= high:
-        _invalid(field + " is outside its integer bounds")
-    return value
-
-
-def _number(value, low=None, high=None, field="number"):
-    if type(value) not in (int, float):
-        _invalid(field + " must be finite numeric data")
-    try:
-        finite = math.isfinite(value)
-    except OverflowError:
-        finite = False
-    if not finite or (low is not None and value < low) or (high is not None and value > high):
-        _invalid(field + " is outside its finite numeric bounds")
-    return float(value)
-
-
-def _string(value, low, high, field):
-    if not isinstance(value, str) or not low <= len(value) <= high or "\x00" in value:
-        _invalid(field + " must be bounded text without NUL")
-    return value
-
-
-def _point(value, integer=False):
-    if not isinstance(value, list) or len(value) != 2:
-        _invalid("Coordinates must be pairs")
-    if integer:
-        return [_integer(v, -(2**31), 2**31 - 1, "coordinate") for v in value]
-    return [_number(v, field="coordinate") for v in value]
+MUTATIONS = MUTATIONS | EDITING_MUTATIONS
+COMMANDS = COMMANDS | EDITING_COMMANDS
 
 
 def validate_request(body, instance_id):
@@ -122,10 +82,11 @@ def validate_request(body, instance_id):
     )
     target_fields = (
         {"document_id", "node_id"}
-        if c in {"paint_path", "paint_line"}
+        if c in {"paint_path", "paint_line", "paint_bezier_path"} | LAYER_COMMANDS
         else {"document_id"}
         if c
-        in {
+        in DOCUMENT_COMMANDS
+        | {
             "inspect_document",
             "get_preview",
             "create_paint_layer",
@@ -144,7 +105,9 @@ def validate_request(body, instance_id):
     for k, v in target.items():
         validate_id(v, k)
     p = r.get("params", {})
-    if c in {
+    if c in EDITING_COMMANDS:
+        p = validate_editing(c, p)
+    elif c in {
         "list_documents",
         "inspect_document",
         "diffusion_status",
@@ -199,10 +162,16 @@ def validate_request(body, instance_id):
         p["name"] = _string(p["name"], 1, 128, "name")
         if "parent_node_id" in p:
             validate_id(p["parent_node_id"], "parent_node_id")
-    elif c in {"paint_path", "paint_line"}:
+    elif c in {"paint_path", "paint_line", "paint_bezier_path"}:
         brush = {"preset_id", "size_px", "opacity", "color"}
-        geometry = {"points"} if c == "paint_path" else {"start", "end"}
-        pressure = set() if c == "paint_path" else {"pressure_start", "pressure_end"}
+        geometry = (
+            {"start", "segments"}
+            if c == "paint_bezier_path"
+            else {"points"}
+            if c == "paint_path"
+            else {"start", "end"}
+        )
+        pressure = set() if c != "paint_line" else {"pressure_start", "pressure_end"}
         p = _object(p, brush | geometry | pressure, brush | geometry)
         validate_id(p["preset_id"], "preset_id")
         p["size_px"] = _number(p["size_px"], 0.1, 1000, "size_px")
@@ -210,7 +179,17 @@ def validate_request(body, instance_id):
         if not isinstance(p["color"], str) or not _COLOR.fullmatch(p["color"]):
             _invalid("color must be #RRGGBB")
         p["color"] = p["color"].upper()
-        if c == "paint_path":
+        if c == "paint_bezier_path":
+            p["start"] = _point(p["start"])
+            if not isinstance(p["segments"], list) or not 1 <= len(p["segments"]) <= 256:
+                _invalid("segments requires 1 to 256 cubic segments")
+            segments = []
+            for segment in p["segments"]:
+                if not isinstance(segment, list) or len(segment) != 3:
+                    _invalid("Each cubic segment needs two controls and an endpoint")
+                segments.append([_point(v) for v in segment])
+            p["segments"] = segments
+        elif c == "paint_path":
             if not isinstance(p["points"], list) or not 2 <= len(p["points"]) <= 2048:
                 _invalid("points requires 2 to 2048 coordinate pairs")
             p["points"] = [_point(v) for v in p["points"]]

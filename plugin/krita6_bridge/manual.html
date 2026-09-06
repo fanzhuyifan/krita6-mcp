@@ -18,6 +18,17 @@ before launch to start manually. Stopping waits for already dispatched native wo
 <pre>KRITA6_MCP_OUTPUT_ROOTS='{"art":"/absolute/path/to/artwork"}'</pre>
 <p>The directory must already exist. File tools accept a root name and relative path, with explicit
 overwrite permission. No output roots are needed for inspection, painting, or inline previews.</p>
+<h2>Reference editing</h2>
+<p>Commands can activate an existing document view, clear or replace a selection, inspect a canvas
+crop, copy and reorder paint layers, set visibility/name/opacity, and align an overlay with a bounded
+pixel transform. Native cubic Bézier paths use the selected pixel-brush preset. Layer and selection
+edits do not promise an undo transaction; duplicate an important layer before transforming it.</p>
+<p>To open PNG/JPEG/KRA files or import a PNG/JPEG layer, configure separate existing input directories
+before launching Krita:</p>
+<pre>KRITA6_MCP_INPUT_ROOTS='{"references":"/absolute/path/to/references"}'</pre>
+<p>Use the named root and a relative path. Imports and transforms require the documented RGBA/U8/sRGB
+color space and fit the complete result inside the canvas. Building a plugin update does not change
+an already running instance; install and restart when you are ready.</p>
 <h2>Operation outcomes</h2>
 <p>Reuse the same operation ID and arguments when retrying uncertain work. A timeout does not undo
 an edit. Check operation status before issuing another mutation. Painting requires the requested

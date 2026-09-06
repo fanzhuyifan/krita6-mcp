@@ -42,7 +42,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             if request is None:
                 continue
             dispatched.append(request)
-            if request["command"] in {"get_preview", "get_diffusion_result"}:
+            if request["command"] in {"get_preview", "get_region_preview", "get_diffusion_result"}:
                 result = {**artifacts.put(PNG), "preview_width": 1, "preview_height": 1}
                 effect = "none"
             elif request["command"] == "create_document":
@@ -85,7 +85,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             listed = await client.list_tools()
             tools = listed.tools if hasattr(listed, "tools") else listed
             by_name = {tool.name: tool for tool in tools}
-            assert len(by_name) == 21
+            assert len(by_name) == 32
             assert by_name["krita_status"].annotations.read_only_hint
             diffusion_tools = {
                 "krita_diffusion_status",
@@ -108,6 +108,91 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
                 assert "operation_id" in by_name[name].input_schema["required"]
             assert "operation_id" in by_name["krita_paint_path"].input_schema["required"]
             assert "pressure" not in by_name["krita_paint_path"].input_schema["properties"]
+            editing_mutations = {
+                "activate_document": {},
+                "clear_selection": {},
+                "set_layer_properties": {"node_id": "source", "visible": False, "opacity": 0.5},
+                "copy_layer": {
+                    "node_id": "source",
+                    "destination_document_id": "destination",
+                    "name": "Overlay",
+                    "parent_node_id": "group",
+                    "above_node_id": "reference",
+                },
+                "transform_layer": {"node_id": "source", "pivot": [32, 24], "rotation_degrees": 15},
+                "move_layer": {"node_id": "source", "above_node_id": "reference"},
+                "open_document": {"root": "references", "path": "face.png"},
+                "import_image_layer": {"root": "references", "path": "face.png", "name": "Face"},
+                "set_selection": {"shape": "polygon", "points": [[0, 0], [32, 0], [16, 24]]},
+                "paint_bezier_path": {
+                    "node_id": "source",
+                    "preset_id": "pencil",
+                    "size_px": 2,
+                    "opacity": 1,
+                    "color": "#112233",
+                    "start": [1, 2],
+                    "segments": [[[3, 4], [5, 6], [7, 8]]],
+                },
+            }
+            for command, arguments in editing_mutations.items():
+                tool = by_name["krita_" + command]
+                assert not tool.annotations.read_only_hint
+                assert "operation_id" in tool.input_schema["required"]
+                arguments = {
+                    "instance_id": "integration",
+                    "operation_id": "edit-" + command,
+                    **({"document_id": "scratch"} if command != "open_document" else {}),
+                    **arguments,
+                }
+                first_edit = await client.call_tool(tool.name, arguments)
+                repeated_edit = await client.call_tool(tool.name, arguments)
+                assert not first_edit.is_error, first_edit
+                assert repeated_edit.structured_content == first_edit.structured_content
+            assert by_name["krita_get_region_preview"].annotations.read_only_hint
+            assert (
+                "operation_id" not in by_name["krita_get_region_preview"].input_schema["properties"]
+            )
+            for bad_tool, bad_arguments in (
+                ("krita_transform_layer", {"node_id": "source", "pivot": [True, 0]}),
+                ("krita_transform_layer", {"node_id": "source", "pivot": [0, 0], "scale_x": 0}),
+                ("krita_set_layer_properties", {"node_id": "source", "visible": 1}),
+                ("krita_set_layer_properties", {"node_id": "source"}),
+                ("krita_set_selection", {"shape": "polygon", "points": [[0, 0], [1, 1]]}),
+                (
+                    "krita_set_selection",
+                    {
+                        "shape": "rectangle",
+                        "x": 0,
+                        "y": 0,
+                        "width": 2,
+                        "height": 2,
+                        "points": [[0, 0], [1, 0], [1, 1]],
+                    },
+                ),
+                (
+                    "krita_set_selection",
+                    {"shape": "rectangle", "x": 0, "y": 0, "width": 8192, "height": 8192},
+                ),
+                ("krita_clear_selection", {"action": "arbitrary"}),
+                (
+                    "krita_import_image_layer",
+                    {"root": "references", "path": "face.png", "name": "Face", "x": -1},
+                ),
+                (
+                    "krita_paint_bezier_path",
+                    {**editing_mutations["paint_bezier_path"], "segments": [[[1, 1], [2, 2]]]},
+                ),
+            ):
+                rejected = await client.call_tool(
+                    bad_tool,
+                    {
+                        "instance_id": "integration",
+                        "document_id": "scratch",
+                        "operation_id": "invalid-" + bad_tool,
+                        **bad_arguments,
+                    },
+                )
+                assert rejected.is_error, (bad_tool, bad_arguments)
             status = await client.call_tool("krita_status", {})
             assert not status.is_error
             assert status.structured_content["available"]
@@ -184,6 +269,41 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             assert not retrieved_preview.is_error
             assert retrieved_preview.structured_content == preview.structured_content
             assert retrieved_preview.content == preview.content
+            region_preview = await client.call_tool(
+                "krita_get_region_preview",
+                {
+                    "instance_id": "integration",
+                    "document_id": "scratch",
+                    "x": 3,
+                    "y": 4,
+                    "width": 12,
+                    "height": 8,
+                },
+            )
+            assert not region_preview.is_error
+            assert [item for item in region_preview.content if item.type == "image"]
+            retrieved_region = await client.call_tool(
+                "krita_get_operation",
+                {
+                    "instance_id": "integration",
+                    "operation_id": region_preview.structured_content["operation_id"],
+                },
+            )
+            assert retrieved_region.content == region_preview.content
+            for invalid_region in ({"x": True}, {"width": 8193}, {"width": 8192, "height": 8192}):
+                rejected_region = await client.call_tool(
+                    "krita_get_region_preview",
+                    {
+                        "instance_id": "integration",
+                        "document_id": "scratch",
+                        "x": 0,
+                        "y": 0,
+                        "width": 12,
+                        "height": 8,
+                        **invalid_region,
+                    },
+                )
+                assert rejected_region.is_error
             generation_args = {
                 "instance_id": "integration",
                 "document_id": "scratch",
@@ -268,7 +388,44 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
         assert (
             len([item for item in dispatched if item["command"] == "apply_diffusion_result"]) == 1
         )
-        assert ledger.status()["mutations"] == 3
+        edits = {
+            item["command"]: item for item in dispatched if item["operation_id"].startswith("edit-")
+        }
+        assert len(edits) == 10
+        assert len([item for item in dispatched if item["operation_id"].startswith("edit-")]) == 10
+        assert edits["activate_document"]["target"] == {"document_id": "scratch"}
+        assert edits["activate_document"]["params"] == {}
+        assert edits["set_layer_properties"]["params"] == {"visible": False, "opacity": 0.5}
+        assert edits["copy_layer"]["params"] == {
+            "destination_document_id": "destination",
+            "name": "Overlay",
+            "parent_node_id": "group",
+            "above_node_id": "reference",
+        }
+        assert edits["transform_layer"]["params"] == {
+            "pivot": [32, 24],
+            "rotation_degrees": 15,
+            "translate_x": 0,
+            "translate_y": 0,
+            "scale_x": 1,
+            "scale_y": 1,
+        }
+        assert edits["move_layer"]["params"] == {"above_node_id": "reference"}
+        assert edits["open_document"]["target"] == {}
+        assert edits["open_document"]["params"] == {"root": "references", "path": "face.png"}
+        assert edits["import_image_layer"]["params"] == {
+            "root": "references",
+            "path": "face.png",
+            "name": "Face",
+            "x": 0,
+            "y": 0,
+        }
+        assert edits["set_selection"]["params"] == {
+            "shape": "polygon",
+            "points": [[0, 0], [32, 0], [16, 24]],
+        }
+        assert edits["paint_bezier_path"]["params"]["segments"] == [[[3, 4], [5, 6], [7, 8]]]
+        assert ledger.status()["mutations"] == 13
     finally:
         stop.set()
         thread.join(timeout=2)
@@ -377,6 +534,8 @@ def test_preview_retrieval_failure_preserves_operation_and_metadata(tool_name):
     [
         ("export_png", "succeeded", None),
         ("get_preview", "queued", None),
+        ("get_region_preview", "queued", None),
+        ("get_region_preview", "failed", None),
         ("get_preview", "failed", None),
         ("get_preview", "succeeded", {"code": "RESULT_EXPIRED"}),
     ],
@@ -404,3 +563,67 @@ def test_operation_only_retrieves_artifacts_for_successful_previews(command, sta
     assert response.structured_content == snapshot
     assert bool(response.is_error) == bool(error or state == "failed")
     assert all(item.type != "image" for item in response.content)
+
+
+def test_pending_region_preview_attaches_image_after_reconciliation():
+    snapshot = {
+        "instance_id": "region-test",
+        "operation_id": "region-1",
+        "command": "get_region_preview",
+        "state": "queued",
+        "effect": "none",
+        "result": None,
+    }
+    artifact_reads = []
+
+    class RegionBridge:
+        def execute(self, command, **kwargs):
+            assert command == "get_region_preview"
+            return dict(snapshot)
+
+        def get_operation(self, instance_id, operation_id):
+            assert (instance_id, operation_id) == ("region-test", "region-1")
+            return dict(snapshot)
+
+        def get_artifact(self, instance_id, artifact_id):
+            artifact_reads.append((instance_id, artifact_id))
+            return PNG
+
+    async def scenario():
+        server = create_server(RegionBridge())
+        queued = await server.call_tool(
+            "krita_get_region_preview",
+            {
+                "instance_id": "region-test",
+                "document_id": "scratch",
+                "x": 7,
+                "y": 9,
+                "width": 32,
+                "height": 24,
+            },
+        )
+        assert queued.structured_content["state"] == "queued"
+        assert not artifact_reads
+        snapshot.update(
+            state="succeeded",
+            result={
+                "artifact_id": "crop-1",
+                "offset_x": 7,
+                "offset_y": 9,
+                "preview_width": 32,
+                "preview_height": 24,
+            },
+        )
+        complete = await server.call_tool(
+            "krita_get_operation",
+            {
+                "instance_id": "region-test",
+                "operation_id": "region-1",
+            },
+        )
+        assert complete.structured_content == snapshot
+        images = [item for item in complete.content if item.type == "image"]
+        assert len(images) == 1 and base64.b64decode(images[0].data) == PNG
+        assert artifact_reads == [("region-test", "crop-1")]
+
+    asyncio.run(scenario())

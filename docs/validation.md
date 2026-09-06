@@ -34,7 +34,7 @@ The probe also found that `Document.projection()` with omitted bounds returns a 
 
 `tools/smoke_krita.py` loads the production plugin in another disposable profile and drives the external adapter through real MCP stdio. The [retained report](validation/mcp-linux-krita-6.0.3.json) records:
 
-- All 21 tools are advertised, including the eight optional diffusion tools.
+- All 32 tools are advertised, including the eight optional diffusion tools; the catalog was rechecked after the reference-editing additions.
 - With AI Diffusion absent, its status returns `not_loaded` and the core workflow still succeeds.
 - Retrying document creation with the same operation ID creates only one document.
 - A paint layer, red native path, and blue pressure line are created through the bridge.
@@ -44,7 +44,25 @@ The probe also found that `Document.projection()` with omitted bounds returns a 
 
 ![MCP inline preview](validation/mcp-preview.png)
 
-The image was visually checked against the exported PNG. Its SHA-256 is retained in the report. The first live run exposed preset XML changing after our own setting updates; the host now refreshes the used handle synchronously after restoration, with a regression test for a second stroke and later external edits.
+The image was visually checked against the exported PNG. Its SHA-256 is retained in the report. After the reference-editing additions, the 32-tool core smoke workflow passed again with the same preview SHA-256, native path/line behavior, duplicate creation handling, and save/export checks. The first live run exposed preset XML changing after our own setting updates; the host now refreshes the used handle synchronously after restoration, with a regression test for a second stroke and later external edits.
+
+## Reference editing
+
+`tools/probe_editing.py` passes all eleven new editing tools through real MCP stdio and the production plugin in a separate Xvfb/D-Bus/profile/runtime/discovery environment. The [sanitized report](validation/editing-linux-krita-6.0.3.json) records the same Linux/Krita 6.0.3, Qt 6.11.2, PyQt 6.11.0, and embedded Python 3.14.7 runtime. The test uses 128 × 96 RGBA/U8/standard-sRGB canvases, 24 × 16 PNG/JPEG fixtures, and the bundled `b) Basic-5 Size` preset. Its independent GUI-thread fixture observes document/layer pixels and selection masks, separately from MCP result metadata.
+
+- Activation switches to the requested existing view; Bézier painting rejects the inactive target and a nonempty selection before dispatch.
+- Rectangle and triangle selections have the expected inside/outside mask pixels; clearing removes the selection.
+- One cubic Bézier request paints a native stroke. Retrying its ID does not paint again. One ordinary undo restores the prior projection; redo restores exact layer pixel bytes and the same visible projection. Krita may change RGB values in fully transparent projection pixels after redo, so that projection comparison ignores RGB only where alpha is zero.
+- PNG import preserves red/green/blue channels, transparency, and the requested offset. JPEG import matches its known color within compression tolerance. Repeated import adds no duplicate layer.
+- Name, visibility, and opacity updates appear in independently observed node state and settled projection pixels.
+- The 24 × 16 region PNG has exact crop coordinates, RGB/alpha, and unit scale. A 128 × 96 region downsamples to 64 × 48 with scale 0.5. Both reads preserve the saved source's filename, modified flag, layers, selection, and checked pixels.
+- Cross-document copy preserves source state and creates one new layer UUID, including on retry. Reordering preserves the layer UUID and verifies both sibling order and which overlapping color appears in the projection.
+- A transform combining a twofold scale, 90° clockwise rotation, explicit pivot, and translation places each colored quadrant at its independently calculated coordinates. Original pixels are cleared; transparent pixels remain transparent. Retrying does not transform twice.
+- PNG/JPEG and layered KRA files open through the bounded input root; a repeated PNG open creates only one document. Invalid paths, off-canvas regions/import/selection, and conflicting operation IDs fail without changing the checked documents.
+
+The probe exposed a native API detail: `addChildNode` can return success without moving an already-attached node. Production reordering now detaches then reinserts the same node and verifies its parent and sibling position. Immediate inspection after opening may return `DOCUMENT_BUSY`; the test retries only that read with a bound and never resubmits a mutation under a new identity.
+
+Direct layer/selection/pixel edits still report `undo: "not_guaranteed"`. This fixture establishes standard-sRGB, little-endian pixel handling on the stated build, not arbitrary profile conversion, all rotations/resampling cases, large documents, group/mask combinations, or live multi-window races. No normal profile, existing discovery file, personal artwork, or already-open Krita instance is used.
 
 ## AI Diffusion readers
 
@@ -80,7 +98,7 @@ This establishes the workflow on the stated model/build. Existing regional promp
 
 ## Automated coverage
 
-**245 pytest tests pass on CPython 3.11.16**, using dependencies installed from `uv.lock`. CI runs the suite on Python 3.10, 3.12, and 3.14. Coverage includes strict schemas, authenticated transport, operation identity/cancellation/expiry, bounded results, native completion guards, and real MCP stdio in SDK `auto` and `legacy` modes. The 24 diffusion-reader cases cover bounded canvas metadata and prohibited read side effects; 43 generation cases cover source/backend gates, one-job submission, restored settings/visibility, scoped automatic-apply suppression, stable weak image handles, pruning/reordering, context changes, and uncertain native outcomes. Thirty host guards cover lifecycle/barrier behavior and consistent capability reporting. These tests establish protocol and adapter behavior; native/upstream compatibility comes from the separate live probes. Ruff, wheel/sdist/ZIP builds, and the real importer check also pass.
+**419 pytest tests pass on CPython 3.11.16**, using dependencies installed from `uv.lock`. CI runs the suite on Python 3.10, 3.12, and 3.14. Coverage includes strict schemas, authenticated transport, operation identity/cancellation/expiry, bounded results, native completion guards, and real MCP stdio in SDK `auto` and `legacy` modes. The 24 diffusion-reader cases cover bounded canvas metadata and prohibited read side effects; 43 generation cases cover source/backend gates, one-job submission, restored settings/visibility, scoped automatic-apply suppression, stable weak image handles, pruning/reordering, context changes, and uncertain native outcomes. Host guards cover lifecycle/barrier behavior, bounded editing, activation completion, layer reordering, and consistent capability reporting. These tests establish protocol and adapter behavior; native/upstream compatibility comes from the separate live probes. The reference-editing increment adds typed-schema/adapter, input-root/KRA-bound, retry/cancellation, and editing host-guard coverage. Ruff and wheel/sdist builds pass on the updated tree; the ZIP and real importer also have the separately recorded checks below.
 
 The release-preparation review found that Krita's ZIP importer requires an explicit module-directory entry. The builder now includes that entry, the MIT license, and the manual, with a packaging regression test. `tools/probe_plugin_import.py` successfully imported the generated archive through Krita's installed importer into a temporary resource directory and verified the installed source/license/manual. The importer check executes its real filesystem logic with only its translation function supplied; it does not establish native painting behavior or touch a personal Krita profile.
 
@@ -91,9 +109,9 @@ Run the verification commands in the [testing guide](testing.md). The live harne
 ## Remaining limits
 
 - Linux/Krita 6.0.3 is the only tested platform/build. Windows discovery fails explicitly until private ACL handling exists; macOS has not been validated.
-- Other engines, arbitrary profiles, nonzero offsets, selections, animation, and per-point path pressure are outside the supported painting path. Preview output-profile/alpha conversion follows Krita's thumbnail API and is explicitly unspecified; this is not archival color validation.
+- Other engines, arbitrary profiles, nonzero offsets, animation, and per-point path pressure are outside the supported painting path. Selections can be explicitly replaced/cleared; native painting still rejects a nonempty selection. Preview output-profile/alpha conversion follows Krita's thumbnail API and is explicitly unspecified; this is not archival color validation.
 - Busy-image, tab-close, modal, repeated stop/start, and simultaneous-instance races need broader **live** stress coverage. Fake-host checks cannot establish all native lifetime behavior.
 - No current-session self-test runs automatically. AI Diffusion generation/application is verified only on the pinned source and local backend/model above. Backend cancellation, cloud/remote backends, and live/custom/edit-model workflows are outside this implementation.
 - The bridge cannot forcibly interrupt a running native stroke or guarantee a hard deadline for synchronous Krita calls. It retains the execution gate while awaiting native completion.
 - File checks do not provide race-proof filesystem isolation from another process running as the same user. At-most-once dispatch applies within a live plugin instance, not across a Krita crash.
-- Layer creation has no promised undo grouping. The implementation provides native stroke undo metadata but no MCP undo tool. Per-tool output schemas and automatic plugin installation remain future work.
+- Layer creation, property changes, selection edits, copying/reordering, imports, and raster transforms have no promised undo grouping. The implementation provides native stroke undo metadata but no MCP undo tool. Per-tool output schemas and automatic plugin installation remain future work.

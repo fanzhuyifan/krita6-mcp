@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server import MCPServer
 from mcp.types import CallToolResult, ImageContent, TextContent, ToolAnnotations
@@ -24,6 +24,20 @@ Color = Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$", strict=True)]
 Point = tuple[Coordinate, Coordinate]
 IntegerPoint = tuple[Integer, Integer]
 PathPoints = Annotated[list[Point], Field(min_length=2, max_length=2048)]
+PixelOffset = Annotated[int, Field(ge=0, le=2**31 - 1, strict=True)]
+RegionSize = Annotated[int, Field(ge=1, le=8192, strict=True)]
+PreviewEdge = Annotated[int, Field(ge=32, le=1024, strict=True)]
+TransformCoordinate = Annotated[float, Field(ge=-32768, le=32768, allow_inf_nan=False, strict=True)]
+TransformPoint = tuple[TransformCoordinate, TransformCoordinate]
+TransformScale = Annotated[float, Field(ge=0.01, le=16, allow_inf_nan=False, strict=True)]
+Rotation = Annotated[float, Field(ge=-360, le=360, allow_inf_nan=False, strict=True)]
+SelectionCoordinate = Annotated[int, Field(ge=-(2**31), le=2**31 - 1, strict=True)]
+SelectionPoint = tuple[SelectionCoordinate, SelectionCoordinate]
+PolygonPoints = Annotated[list[SelectionPoint], Field(min_length=3, max_length=256)]
+BezierSegment = tuple[Point, Point, Point]
+BezierSegments = Annotated[list[BezierSegment], Field(min_length=1, max_length=256)]
+RelativePath = Annotated[str, Field(min_length=1, max_length=4096, strict=True)]
+Boolean = Annotated[bool, Field(strict=True)]
 READ_ONLY = ToolAnnotations(
     read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
@@ -228,6 +242,98 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         )
         return await attach_preview(response, instance_id)
 
+    @server.tool(annotations=READ_ONLY)
+    async def krita_get_region_preview(
+        instance_id: Identifier,
+        document_id: Identifier,
+        x: PixelOffset,
+        y: PixelOffset,
+        width: RegionSize,
+        height: RegionSize,
+        max_edge: PreviewEdge = 1024,
+    ) -> CallToolResult:
+        """Inspect a settled rectangular canvas crop as an inline PNG with image-space offsets. Region must be in canvas and at most 16 megapixels; output edge is at most 1024. Poll pending previews with krita_get_operation."""
+        response = await execute(
+            "get_region_preview",
+            instance_id,
+            target={"document_id": document_id},
+            params={"x": x, "y": y, "width": width, "height": height, "max_edge": max_edge},
+        )
+        return await attach_preview(response, instance_id)
+
+    @server.tool(annotations=MUTATION)
+    async def krita_activate_document(
+        instance_id: Identifier, operation_id: Identifier, document_id: Identifier
+    ) -> CallToolResult:
+        """Activate an existing view of the explicit document so native painting can target it. Changes the user's active canvas. Reuse operation_id on retries."""
+        return await execute(
+            "activate_document", instance_id, operation_id, {"document_id": document_id}
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_clear_selection(
+        instance_id: Identifier, operation_id: Identifier, document_id: Identifier
+    ) -> CallToolResult:
+        """Clear the explicit document's selection. No guaranteed undo transaction. Reuse operation_id on retries."""
+        return await execute(
+            "clear_selection", instance_id, operation_id, {"document_id": document_id}
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_set_selection(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        shape: Literal["rectangle", "polygon"],
+        x: PixelOffset | None = None,
+        y: PixelOffset | None = None,
+        width: RegionSize | None = None,
+        height: RegionSize | None = None,
+        points: PolygonPoints | None = None,
+    ) -> CallToolResult:
+        """Replace the selection with a bounded rectangle or polygon in image pixels. Rectangle requires only x/y/width/height; polygon requires only 3–256 integer points. Selection bounds must fit the canvas and 16 megapixels. No guaranteed undo transaction."""
+        params = {"shape": shape}
+        for key, value in (("x", x), ("y", y), ("width", width), ("height", height)):
+            if value is not None:
+                params[key] = value
+        if points is not None:
+            params["points"] = [list(point) for point in points]
+        return await execute(
+            "set_selection", instance_id, operation_id, {"document_id": document_id}, params
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_open_document(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        root: Identifier,
+        path: RelativePath,
+    ) -> CallToolResult:
+        """Open a bounded local KRA, PNG or JPEG file from a configured input root and attach an active view. Path must be relative to the named root. Reuse operation_id to avoid duplicate opens after a timeout."""
+        return await execute(
+            "open_document", instance_id, operation_id, params={"root": root, "path": path}
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_import_image_layer(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        root: Identifier,
+        path: RelativePath,
+        name: Name,
+        x: PixelOffset = 0,
+        y: PixelOffset = 0,
+    ) -> CallToolResult:
+        """Import a bounded PNG or JPEG under a configured input root as a new paint layer at an explicit pixel offset. Image must fit the supported RGBA/U8/sRGB destination; no guaranteed undo transaction. Reuse operation_id on retries."""
+        return await execute(
+            "import_image_layer",
+            instance_id,
+            operation_id,
+            {"document_id": document_id},
+            {"root": root, "path": path, "name": name, "x": x, "y": y},
+        )
+
     @server.tool(annotations=MUTATION)
     async def krita_create_document(
         instance_id: Identifier,
@@ -258,6 +364,107 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
             params["parent_node_id"] = parent_node_id
         return await execute(
             "create_paint_layer", instance_id, operation_id, {"document_id": document_id}, params
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_set_layer_properties(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        node_id: Identifier,
+        name: Name | None = None,
+        visible: Boolean | None = None,
+        opacity: Opacity | None = None,
+    ) -> CallToolResult:
+        """Set at least one explicit layer property: name, visibility, or opacity in [0,1]. No guaranteed undo transaction or atomic multi-property rollback. Reuse operation_id on retries."""
+        params = {
+            key: value
+            for key, value in (("name", name), ("visible", visible), ("opacity", opacity))
+            if value is not None
+        }
+        return await execute(
+            "set_layer_properties",
+            instance_id,
+            operation_id,
+            {"document_id": document_id, "node_id": node_id},
+            params,
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_copy_layer(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        node_id: Identifier,
+        destination_document_id: Identifier,
+        name: Name,
+        parent_node_id: Identifier | None = None,
+        above_node_id: Identifier | None = None,
+    ) -> CallToolResult:
+        """Copy a supported paint layer into an explicit destination document. Omitted parent means document root; above_node_id selects a sibling to insert above. Returns the new node handle. No guaranteed undo transaction. Reuse operation_id to avoid duplicate copies."""
+        params = {"destination_document_id": destination_document_id, "name": name}
+        if parent_node_id is not None:
+            params["parent_node_id"] = parent_node_id
+        if above_node_id is not None:
+            params["above_node_id"] = above_node_id
+        return await execute(
+            "copy_layer",
+            instance_id,
+            operation_id,
+            {"document_id": document_id, "node_id": node_id},
+            params,
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_transform_layer(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        node_id: Identifier,
+        pivot: TransformPoint,
+        translate_x: TransformCoordinate = 0.0,
+        translate_y: TransformCoordinate = 0.0,
+        scale_x: TransformScale = 1.0,
+        scale_y: TransformScale = 1.0,
+        rotation_degrees: Rotation = 0.0,
+    ) -> CallToolResult:
+        """Resample one supported RGBA/U8/sRGB paint layer: scale then clockwise rotate around an explicit image-pixel pivot, then translate. This rewrites raster pixels with no guaranteed undo transaction; it is not a native transform mask. Reuse operation_id on retries."""
+        return await execute(
+            "transform_layer",
+            instance_id,
+            operation_id,
+            {"document_id": document_id, "node_id": node_id},
+            {
+                "pivot": list(pivot),
+                "translate_x": translate_x,
+                "translate_y": translate_y,
+                "scale_x": scale_x,
+                "scale_y": scale_y,
+                "rotation_degrees": rotation_degrees,
+            },
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_move_layer(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        node_id: Identifier,
+        parent_node_id: Identifier | None = None,
+        above_node_id: Identifier | None = None,
+    ) -> CallToolResult:
+        """Reorder a layer within its document. Omitted parent means document root; above_node_id selects a sibling to insert above. Changes stacking order without translating pixels. No guaranteed undo transaction. Reuse operation_id on retries."""
+        params = {}
+        if parent_node_id is not None:
+            params["parent_node_id"] = parent_node_id
+        if above_node_id is not None:
+            params["above_node_id"] = above_node_id
+        return await execute(
+            "move_layer",
+            instance_id,
+            operation_id,
+            {"document_id": document_id, "node_id": node_id},
+            params,
         )
 
     @server.tool(annotations=READ_ONLY)
@@ -298,6 +505,35 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
                 "opacity": opacity,
                 "color": color,
                 "points": [list(point) for point in points],
+            },
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_paint_bezier_path(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        node_id: Identifier,
+        preset_id: Identifier,
+        size_px: BrushSize,
+        opacity: Opacity,
+        color: Color,
+        start: Point,
+        segments: BezierSegments,
+    ) -> CallToolResult:
+        """Paint one native cubic Bézier path with 1–256 segments in image pixels. Each segment is [control1, control2, endpoint], each a coordinate pair. Requires the target's active view; no per-point pressure. Reuse operation_id on retries."""
+        return await execute(
+            "paint_bezier_path",
+            instance_id,
+            operation_id,
+            {"document_id": document_id, "node_id": node_id},
+            {
+                "preset_id": preset_id,
+                "size_px": size_px,
+                "opacity": opacity,
+                "color": color,
+                "start": list(start),
+                "segments": [[list(point) for point in segment] for segment in segments],
             },
         )
 
@@ -378,7 +614,11 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         response = await call(
             bridge.get_operation, instance_id=instance_id, operation_id=operation_id
         )
-        if response.structured_content.get("command") in {"get_preview", "get_diffusion_result"}:
+        if response.structured_content.get("command") in {
+            "get_preview",
+            "get_region_preview",
+            "get_diffusion_result",
+        }:
             return await attach_preview(response, instance_id)
         return response
 

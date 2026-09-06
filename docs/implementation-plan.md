@@ -2,7 +2,7 @@
 
 Updated 2026-09-06 for initial implementation 0.1.0.
 
-The core native workflow passes on Linux/Krita 6.0.3. The 21-tool MCP catalog includes eight optional AI Diffusion tools, with generation tied to a pinned Qt6 development plugin and a connected local backend. The bridge has automated protocol, transport, ledger, host-guard, diffusion-reader, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
+The core native workflow passes on Linux/Krita 6.0.3. The 32-tool MCP catalog includes eight optional AI Diffusion tools, with generation tied to a pinned Qt6 development plugin and a connected local backend. The bridge has automated protocol, transport, ledger, host-guard, diffusion-reader, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
 
 ## 0. Prove the host API before building the catalog
 
@@ -45,14 +45,14 @@ Submit one image through existing canvas preparation, retain owned generation/re
 
 ## 3. Useful document editing and distribution
 
-Add bounded open-file support, layer visibility/name/opacity, native shapes, and crop previews after individual host validation. Include backup-preserving plugin installation, upgrade/uninstall instructions, and Windows/macOS discovery paths. Leave plugin enablement visible to the user. Keep installer behavior separate from MCP runtime behavior.
+Reference editing now adds activation, explicit selection replacement/clearing, bounded input-file opening/import, paint-layer properties/copying/reordering/affine transforms, cubic Bézier paths, and region previews. Direct selection/layer/pixel commands do not promise undo grouping. The separate editing probe drives production MCP commands and independently observes scratch pixels and state; see [validation evidence](validation.md#reference-editing). Native shapes and broader document/layer/color support remain future work. Include backup-preserving plugin installation, upgrade/uninstall instructions, and Windows/macOS discovery paths. Leave plugin enablement visible to the user. Keep installer behavior separate from MCP runtime behavior.
 
 **Gate:** the same host smoke workflow passes on each advertised platform/build. Test paths with spaces/non-ASCII, multiple Krita instances, port reuse, token rotation, plugin/server version skew, and missing Python plugin packages. Publish a compatibility matrix with tested versions and retained evidence, not a blanket “Krita 6 compatible” badge.
 
 ## Later, only when justified
 
 - Continuous strokes with per-point pressure/tilt/time: investigate a public API extension; separate line segments are not equivalent.
-- Selection editing, pixel imports, filters, transforms, additional color spaces: specify mutation and undo semantics per operation.
+- Filters, advanced selection modes, transform masks, and additional color spaces: specify mutation and undo semantics per operation.
 - Safe programmatic undo or grouped edits: requires reliable ownership/history evidence or an upstream undo API.
 - Animation, vector/text editing, large-document tiling, remote transport: separate capability work after the local loop is dependable.
 
@@ -76,6 +76,9 @@ plugin/
     discovery.py            # POSIX state files and session discovery
     protocol.py             # Shared strict command validation
     output_paths.py         # Standard-library output-root and path checks
+    input_paths.py          # Bounded input roots, formats and KRA archive checks
+    editing_protocol.py     # Strict reference-editing request contracts
+    editing.py              # GUI-only selections, layers, transforms, import/open, crops
     host.py                 # Live identities, commands, painting, preview
     diffusion.py            # Optional observation of already loaded Qt6 plugin
     diffusion_generation.py # Owned generation, result inspection and application
@@ -87,6 +90,7 @@ tools/
   build_plugin.py
   probe_krita.py             # Isolated native API proof
   smoke_krita.py             # Production plugin through real MCP
+  probe_editing.py           # Reference workflow, independent native snapshots, real MCP
   probe_diffusion.py         # Pinned upstream plugin, synthetic jobs, real MCP reads
   probe_diffusion_generation.py # Isolated real local backend and canvas workflow
 docs/
@@ -94,7 +98,7 @@ docs/
   validation/               # Sanitized reports and small test PNGs
 ```
 
-The external wheel also includes the dependency-free bridge modules; importing them does not load Qt outside Krita. The plugin ZIP contains no MCP dependency or test harness. MCP input models and the strict shared validator both validate commands. Per-tool output schemas, installation automation, and advanced editing remain future work.
+The external wheel also includes the dependency-free bridge modules; importing them does not load Qt outside Krita. The plugin ZIP contains no MCP dependency or test harness. MCP input models and the strict shared validator both validate commands. Per-tool output schemas, installation automation, native shapes, and broader editing support remain future work.
 
 ## Decisions established by the first implementation
 

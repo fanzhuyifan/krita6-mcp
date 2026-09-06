@@ -20,11 +20,23 @@ Run `uv run krita6-mcp doctor --json` from the checkout to read connection state
 
 ## Editing and retries
 
-Before editing, list documents and inspect the target. The catalog has 13 core tools and eight optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
+Before editing, list documents and inspect the target. The catalog has 24 core tools and eight optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
 
-Native painting requires an active document view, an unlocked nonanimated paint layer, no selection, zero canvas offset, and RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc`. The supported engine is the pixel brush engine. Paths do not support arbitrary per-point pressure; lines accept endpoint pressure. There is no arbitrary Python/action-execution tool or MCP undo tool. Ordinary Krita undo is available for native strokes. See [validation evidence](validation.md) for the exact tested build and preset.
+Native painting requires an active document view, an unlocked nonanimated paint layer, no selection, zero canvas offset, and RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc`. The supported engine is the pixel brush engine. Paths and cubic Bézier paths do not support arbitrary per-point pressure; lines accept endpoint pressure. There is no arbitrary Python/action-execution tool or MCP undo tool. Ordinary Krita undo is available for native strokes. See [validation evidence](validation.md) for the exact tested build and preset.
 
 Every mutation requires an `operation_id`, such as `sketch-outline-001`. Reuse the same ID and identical arguments when retrying uncertain work; use a new ID for an intentional second edit. A timed-out or running operation can still complete. Query `krita_get_operation` to reconcile it. Cancellation prevents unstarted work; it cannot forcibly interrupt a native stroke already running. Operation identities are retained within a live bridge session, not across a Krita crash.
+
+## Reference overlays
+
+Use `krita_activate_document` to select an existing view of the target document. `krita_clear_selection` explicitly removes a selection; native painting continues to reject nonempty selections. `krita_set_selection` replaces the current selection with an in-canvas rectangle or a polygon of 3–256 integer points. Polygon selection uses a hard, unfeathered mask and odd-even filling.
+
+An overlay workflow is: copy the sketch with `krita_copy_layer`, place it above a reference using `krita_move_layer`, align it with `krita_transform_layer`, adjust visibility/opacity with `krita_set_layer_properties`, and inspect the face with `krita_get_region_preview`. Copying accepts an explicit destination document and name; copying and moving accept an optional destination group and sibling to insert above. Moving stays within its document. Layer editing currently accepts unlocked, nonanimated paint layers without masks or children. Pixel copying/transforms require the same standard RGBA/U8/sRGB authoring space as painting.
+
+Transform arguments include an explicit image-space `pivot`, `scale_x`/`scale_y`, `rotation_degrees`, and `translate_x`/`translate_y`. The order is scale, clockwise rotation around the pivot, then translation. The entire output must fit inside the canvas. Transforms resample pixels using Qt smooth interpolation and replace the layer's pixels; they are not nondestructive transform masks. Copy the layer first to retain the original. These direct editing operations report `undo: "not_guaranteed"`; only tested native strokes have the stated one-stroke undo behavior.
+
+Region previews accept `x`, `y`, `width`, `height`, and `max_edge` (32–1024), with the entire requested region inside the zero-offset canvas. The returned PNG includes crop origin and scale so its coordinates can be mapped back to the document. Profile/alpha conversion follows Krita's projection API and is not a general archival color guarantee.
+
+For smooth contours, `krita_paint_bezier_path` accepts a starting point and 1–256 cubic segments. Each segment is `[control1, control2, end]`, with each point `[x, y]`. It paints one native path with the same brush settings and active-view restrictions as `krita_paint_path`.
 
 ## Save and export
 
@@ -36,6 +48,14 @@ KRITA6_MCP_OUTPUT_ROOTS='{"art":"/absolute/path/to/artwork"}' krita
 ```
 
 Use `root="art"` and a relative `path`, such as `sketch.kra` or `preview.png`, in file tools. Parent directories must already exist. Existing files are rejected unless `overwrite=true`. Document creation, painting, and inline previews work without output roots.
+
+Opening and importing files require separate named input roots in Krita's environment:
+
+```bash
+KRITA6_MCP_INPUT_ROOTS='{"references":"/absolute/path/to/references"}' krita
+```
+
+`krita_open_document` opens PNG, JPEG, or KRA files and attaches an active view. `krita_import_image_layer` imports PNG/JPEG as a new top paint layer at explicit integer `x`/`y` coordinates. Both use a relative `path` under an existing named input root, reject path traversal and unsupported files, and bound image dimensions to 8192 pixels per side and 16 megapixels. Imports convert embedded profiles to sRGB; untagged images are assumed sRGB. Import requires a standard RGBA/U8/sRGB destination and keeps the complete image inside the canvas. Input file limits are 32 MiB for layer import and 64 MiB for document opening. These environment settings take effect in a newly launched Krita process; building updated code does not change an existing session.
 
 ## Krita AI Diffusion
 

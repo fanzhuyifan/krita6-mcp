@@ -113,11 +113,31 @@ def test_catalog_samples_cover_every_command():
         "create_paint_layer": (doc, {"name": "Paint"}),
         "paint_path": ({**doc, "node_id": "node-1"}, {**brush, "points": [[1, 1], [2, 2]]}),
         "paint_line": ({**doc, "node_id": "node-1"}, {**brush, "start": [1, 1], "end": [2, 2]}),
+        "paint_bezier_path": (
+            {**doc, "node_id": "node-1"},
+            {**brush, "start": [1, 1], "segments": [[[2, 2], [3, 3], [4, 4]]]},
+        ),
+        "activate_document": (doc, {}),
+        "clear_selection": (doc, {}),
+        "get_region_preview": (doc, {"x": 0, "y": 0, "width": 32, "height": 32}),
+        "set_layer_properties": ({**doc, "node_id": "node-1"}, {"visible": False}),
+        "copy_layer": (
+            {**doc, "node_id": "node-1"},
+            {"destination_document_id": "doc-2", "name": "Copy"},
+        ),
+        "transform_layer": ({**doc, "node_id": "node-1"}, {"pivot": [0, 0]}),
+        "move_layer": ({**doc, "node_id": "node-1"}, {}),
+        "open_document": ({}, {"root": "input", "path": "reference.kra"}),
+        "import_image_layer": (
+            doc,
+            {"root": "input", "path": "reference.png", "name": "Reference", "x": 0, "y": 0},
+        ),
+        "set_selection": (doc, {"shape": "rectangle", "x": 0, "y": 0, "width": 32, "height": 32}),
         "save_document": (doc, {"root": "output", "path": "scratch.kra"}),
         "export_png": (doc, {"root": "output", "path": "scratch.png"}),
     }
     assert set(samples) == COMMANDS
-    assert len(MUTATIONS) == 8
+    assert len(MUTATIONS) == 18
     for command, (target, params) in samples.items():
         normalized = validate_request(request(command, target=target, params=params), "instance-a")
         assert normalized["command"] == command

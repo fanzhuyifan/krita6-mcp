@@ -32,6 +32,7 @@ from .protocol import BridgeError, COMMANDS
 from .diffusion import DiffusionReader
 from .diffusion_generation import DiffusionGenerator
 from .output_paths import resolve_output_path
+from .editing import EditingMixin
 
 
 SRGB_PROFILE = "sRGB-elle-V2-srgbtrc.icc"
@@ -67,14 +68,15 @@ class Pending:
         return None
 
 
-class KritaHost:
-    def __init__(self, artifacts, output_roots):
+class KritaHost(EditingMixin):
+    def __init__(self, artifacts, output_roots, input_roots=None):
         self._assert_gui_thread()
         self.app = Krita.instance()
         if self.app is None or self.app.version().split(".")[0] != "6":
             raise BridgeError("UNSUPPORTED_HOST", "This plugin requires Krita 6 and PyQt6.")
         self.artifacts = artifacts
         self.output_roots = {name: Path(path) for name, path in output_roots.items()}
+        self.input_roots = {name: Path(path) for name, path in (input_roots or {}).items()}
         self._documents = {}
         self._presets = {}
         self._diffusion = DiffusionReader(self._assert_gui_thread)
@@ -127,6 +129,13 @@ class KritaHost:
                     "open_documents": MAX_OPEN_DOCUMENTS,
                     "nodes_per_document": MAX_LAYER_NODES,
                 },
+                "input_roots": sorted(self.input_roots),
+                "reference_editing": {
+                    "paint_layers_only": True,
+                    "max_region_pixels": 16777216,
+                    "transform_undo": "not_guaranteed",
+                    "evidence": "docs/validation.md",
+                },
                 "output_roots": sorted(self.output_roots),
                 "ai_diffusion": {
                     **self._diffusion.capabilities(),
@@ -148,6 +157,17 @@ class KritaHost:
             )
         # This map is intentionally fixed. There is no arbitrary method dispatch.
         handlers = {
+            "activate_document": self._activate_document,
+            "clear_selection": self._clear_selection,
+            "get_region_preview": self._get_region_preview,
+            "set_layer_properties": self._set_layer_properties,
+            "copy_layer": self._copy_layer,
+            "transform_layer": self._transform_layer,
+            "move_layer": self._move_layer,
+            "open_document": self._open_document,
+            "import_image_layer": self._import_image_layer,
+            "set_selection": self._set_selection,
+            "paint_bezier_path": self._paint_bezier_path,
             "list_documents": self._list_documents,
             "inspect_document": self._inspect_document,
             "get_preview": self._get_preview,

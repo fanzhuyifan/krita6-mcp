@@ -520,3 +520,167 @@ def test_extension_disposes_executor_on_failed_start_and_completed_stop(
     assert events == (["drain", "dispose"] if finish_method == "_startup_failed" else ["dispose"])
     assert extension.executor is extension.ledger is extension.host is extension.server is None
     assert extension._state == "stopped"
+
+
+def test_editing_mutation_failure_keeps_barrier_until_completion(host_modules):
+    host, _ = host_modules
+    changes = []
+    document = types.SimpleNamespace(
+        setModified=lambda value: changes.append(("dirty", value)),
+        refreshProjection=lambda: changes.append(("refresh",)),
+    )
+    fake = host.KritaHost.__new__(host.KritaHost)
+    fake._document = lambda handle: document
+    fake._assert_gui_thread = lambda: None
+    fake._is_ready = lambda doc: False
+
+    def fail_after_dispatch():
+        raise RuntimeError("native change may already have happened")
+
+    pending = fake._editing_mutate("doc-one", fail_after_dispatch, {"node_id": "node-one"})
+    assert isinstance(pending, host.Pending)
+    assert changes == [("dirty", True), ("refresh",)]
+    assert pending.poll() is None
+    fake._is_ready = lambda doc: True
+    with pytest.raises(BridgeError) as error:
+        pending.poll()
+    assert error.value.code == "EDIT_FAILED"
+    assert error.value.effect == "unknown"
+
+
+@pytest.mark.parametrize(
+    "rect", [(0, 0, 0, 1), (0, 0, 8193, 1), (0, 0, 8192, 8192), (-1, 0, 1, 1), (90, 0, 20, 1)]
+)
+def test_editing_region_guards_precede_pixel_allocation(host_modules, rect):
+    host, _ = host_modules
+    fake = host.KritaHost.__new__(host.KritaHost)
+    doc = types.SimpleNamespace(width=lambda: 100, height=lambda: 100)
+    with pytest.raises(BridgeError):
+        fake._editing_rect(doc, *rect)
+
+
+def test_hidden_paint_layer_properties_can_be_changed_but_locks_are_respected(host_modules):
+    host, _ = host_modules
+    fake = host.KritaHost.__new__(host.KritaHost)
+    node = types.SimpleNamespace(
+        type=lambda: "paintlayer",
+        animated=lambda: False,
+        childNodes=lambda: [],
+        locked=lambda: False,
+        visible=lambda: False,
+        parentNode=lambda: None,
+    )
+    fake._node = lambda doc, handle: node
+    assert fake._editing_node(object(), "node") is node
+    node.locked = lambda: True
+    with pytest.raises(BridgeError) as error:
+        fake._editing_node(object(), "node")
+    assert error.value.code == "TARGET_LOCKED"
+
+
+def test_editing_rejects_masked_layers_before_pixel_access(host_modules):
+    host, _ = host_modules
+    fake = host.KritaHost.__new__(host.KritaHost)
+    node = types.SimpleNamespace(
+        type=lambda: "paintlayer", animated=lambda: False, childNodes=lambda: [object()]
+    )
+    fake._node = lambda doc, handle: node
+    with pytest.raises(BridgeError) as error:
+        fake._editing_node(object(), "node", pixels=True)
+    assert error.value.code == "INVALID_TARGET_TYPE"
+
+
+def test_activation_waits_for_actual_application_view(host_modules):
+    host, _ = host_modules
+    fake = host.KritaHost.__new__(host.KritaHost)
+    fake._assert_gui_thread = lambda: None
+    wanted_doc, old_doc = object(), object()
+    wanted_view = types.SimpleNamespace(document=lambda: wanted_doc)
+    old_view = types.SimpleNamespace(document=lambda: old_doc)
+    old_window = types.SimpleNamespace(views=lambda: [old_view], activeView=lambda: old_view)
+    wanted_window = types.SimpleNamespace(
+        views=lambda: [wanted_view],
+        activeView=lambda: wanted_view,
+        activate=lambda: None,
+        showView=lambda view: None,
+    )
+    fake.app = types.SimpleNamespace(
+        activeWindow=lambda: old_window, windows=lambda: [old_window, wanted_window]
+    )
+    fake._document = lambda handle: wanted_doc
+    fake._require_ready = lambda doc: None
+    fake._is_ready = lambda doc: True
+    pending = fake._activate_document({"document_id": "doc-wanted"}, {})
+    assert pending.poll() is None
+    fake.app.activeWindow = lambda: wanted_window
+    assert pending.poll()["active_view"] is True
+    fake.app.activeWindow = lambda: old_window
+    pending.deadline = 0
+    with pytest.raises(BridgeError) as error:
+        pending.poll()
+    assert error.value.code == "ACTIVATION_FAILED"
+    assert error.value.effect == "unknown"
+
+
+def test_editing_refresh_failure_retains_pending_unknown_effect(host_modules):
+    host, _ = host_modules
+    fake = host.KritaHost.__new__(host.KritaHost)
+    fake._assert_gui_thread = lambda: None
+
+    def refresh():
+        raise RuntimeError("projection failed")
+
+    fake._document = lambda handle: types.SimpleNamespace(
+        setModified=lambda value: None, refreshProjection=refresh
+    )
+    fake._is_ready = lambda doc: True
+    pending = fake._editing_mutate("doc", lambda: None, {})
+    with pytest.raises(BridgeError) as error:
+        pending.poll()
+    assert error.value.effect == "unknown"
+
+
+def test_move_detaches_before_insert_and_checks_position(host_modules):
+    host, _ = host_modules
+    fake = host.KritaHost.__new__(host.KritaHost)
+    calls = []
+    node, sibling = object(), object()
+    children = [node, sibling]
+
+    class Parent:
+        def childNodes(self):
+            return children
+
+        def removeChildNode(self, child):
+            calls.append("detach")
+            children.remove(child)
+            return True
+
+        def addChildNode(self, child, above):
+            calls.append("insert")
+            children.insert(children.index(above) + 1, child)
+            return True
+
+    parent = Parent()
+
+    class Node:
+        def parentNode(self):
+            return parent
+
+    node = Node()
+    children[0] = node
+    fake._editing_document = lambda handle: object()
+    fake._editing_node = lambda doc, handle: node
+    fake._editing_parent = lambda doc, params: (parent, sibling)
+
+    def mutate(handle, callback, result):
+        callback()
+        return result
+
+    fake._editing_mutate = mutate
+    result = fake._move_layer(
+        {"document_id": "doc", "node_id": "layer"}, {"above_node_id": "sibling"}
+    )
+    assert calls == ["detach", "insert"]
+    assert children == [sibling, node]
+    assert result["node_id"] == "layer"

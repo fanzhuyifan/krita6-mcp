@@ -11,13 +11,15 @@ On Linux, install `krita`, `Xvfb`/`xvfb-run`, `xauth`, and `dbus-run-session`. R
 ```bash
 .venv/bin/python tools/probe_krita.py
 .venv/bin/python tools/smoke_krita.py
+.venv/bin/python tools/probe_editing.py
 .venv/bin/python tools/probe_plugin_import.py
 ```
 
-The first two harnesses create disposable XDG profiles, a virtual X display, a private D-Bus session, and an isolated `TMPDIR`. The private temporary socket directory prevents Krita's single-instance mechanism from routing test work to an already-open personal session. They use scratch documents and do not install into the normal Krita profile. Never run host tests against personal artwork or a normal profile.
+The native, MCP smoke, and editing harnesses create disposable XDG profiles, a virtual X display, a private D-Bus session, and an isolated `TMPDIR`. The private temporary socket directory prevents Krita's single-instance mechanism from routing test work to an already-open personal session. They use scratch documents and do not install into the normal Krita profile. Never run host tests against personal artwork or a normal profile.
 
 - `probe_krita.py` checks native pixels, resource capture, undo/redo, preview state, and `.kra` round-trip through a fixed test-only plugin.
 - `smoke_krita.py` drives the production plugin through real MCP stdio.
+- `probe_editing.py` drives all eleven reference-editing additions through real MCP. An independent test-only GUI fixture creates small color images and observes actual document/layer pixels, selection masks, and PNG previews. It exercises activation, selection replacement/clearing, Bézier painting and one ordinary undo/redo, import/open, copying/reordering, opacity/visibility, affine transforms, duplicate IDs, and rejected paths/bounds. It never uses the normal discovery directory or an already-open Krita instance.
 - `probe_plugin_import.py` uses Krita's installed importer to extract the generated ZIP into a temporary resource directory and verifies the installed modules, license, and manual. It does not exercise native painting. Pass `--importer /path/to/plugin_importer.py` if the module is installed elsewhere; this executes the selected importer, so use a trusted Krita installation.
 
 The native and MCP harnesses print the location of their reports and test artwork. Pass `--output /path/to/new-artifact-directory` to select a new location. Keep generated reports, profiles, and logs outside Git unless deliberately sanitized for validation evidence.

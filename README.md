@@ -9,7 +9,9 @@ Inspect documents, paint with Krita's native brushes, preview the canvas, and sa
 ## What works
 
 - Document/layer inspection and creation, preset search, native paths and lines with endpoint pressure.
-- Inline PNG previews, layered `.kra` saves, and PNG export.
+- Document activation, rectangle/polygon selections, and native cubic Bézier paths.
+- Layer visibility/name/opacity, copying, ordering, and bounded affine transforms for reference overlays.
+- Inline whole-canvas/region PNG previews, bounded image import/open, layered `.kra` saves, and PNG export.
 - Optional [AI Diffusion generation](docs/usage.md#krita-ai-diffusion): use existing canvas conditioning, inspect results, and apply as a new layer.
 
 ## Install
@@ -59,7 +61,7 @@ mkdir -p /absolute/path/to/artwork
 KRITA6_MCP_OUTPUT_ROOTS='{"art":"/absolute/path/to/artwork"}' krita
 ```
 
-File tools use `root="art"` and a relative path. Replacing files requires `overwrite=true`. Painting and previews work without output roots. [More configuration options](docs/usage.md#save-and-export).
+File tools use `root="art"` and a relative path. Replacing files requires `overwrite=true`. Painting and previews work without output roots. Opening PNG/JPEG/KRA files or importing PNG/JPEG layers uses separate `KRITA6_MCP_INPUT_ROOTS` configured the same way. [File configuration](docs/usage.md#save-and-export) and [reference editing](docs/usage.md#reference-overlays).
 
 ## Development and verification
 
@@ -75,6 +77,7 @@ Linux host checks require Krita, Xvfb, xauth, and D-Bus. Run from a shell withou
 ```bash
 .venv/bin/python tools/probe_krita.py
 .venv/bin/python tools/smoke_krita.py
+.venv/bin/python tools/probe_editing.py
 .venv/bin/python tools/probe_plugin_import.py
 ```
 

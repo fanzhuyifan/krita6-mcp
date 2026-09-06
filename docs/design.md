@@ -6,7 +6,7 @@ Decision record · Initial implementation 0.1.0 · 2026-09-06
 
 Build a local MCP server for deliberate, observable editing in a running Krita 6 session. An assistant should identify the right document and layer, perform a bounded operation, inspect the canvas, and preserve editable work. Native brush behavior and trustworthy completion matter more than exposing every menu action.
 
-The first release covers document inspection/creation, paint layers, native paths and lines, bounded canvas previews, `.kra` saving, and PNG export. Target Krita 6 with Python plugin support; start with the installed Linux package. Krita 5 compatibility, remote network service, headless rendering, animation, arbitrary Python execution, general action triggering, and standalone model/image-generation backends are outside the core bridge. Optional generation uses the existing Krita AI Diffusion add-on and its already connected local backend.
+The first release covers document inspection/creation/activation, bounded file opening/import, selections, paint-layer properties/copying/reordering/affine transforms, native paths/cubic Bézier paths/lines, bounded canvas and region previews, `.kra` saving, and PNG export. Target Krita 6 with Python plugin support; start with the installed Linux package. Krita 5 compatibility, remote network service, headless rendering, animation, arbitrary Python execution, general action triggering, and standalone model/image-generation backends are outside the core bridge. Optional generation uses the existing Krita AI Diffusion add-on and its already connected local backend.
 
 The initial workflow is implemented and tested on Linux with Krita 6.0.3. The [validation record](validation.md) distinguishes verified behavior from remaining gates. Background sources are listed in [references and acknowledgments](research.md); future work remains in the [implementation plan](implementation-plan.md).
 
@@ -134,9 +134,9 @@ Do not approximate a continuous pressure stroke by calling `paintLine` for every
 
 Coordinates refer to native image pixels, independent of zoom, pan, rotation, or display scaling. V1 writes require a zero-offset canvas whose top-left is `(0,0)`; inspection/preview reports actual bounds and offsets for all documents. Reject nonzero origins for painting until coordinate translation is tested. Require in-canvas input points and bound size/count explicitly. Color strings are sRGB; convert using managed colors for painting. Start the validated authoring path with RGBA/U8/sRGB documents. Inspect other document types, but return `UNSUPPORTED_COLORSPACE` for unsupported writes rather than reinterpret raw bytes.
 
-The normal feedback loop uses a bounded in-memory document thumbnail/projection, encoded as PNG and returned as MCP image content alongside source dimensions, preview dimensions, scale/offset, alpha treatment, and profile information. Test color conversion; do not claim an arbitrary projection is sRGB without checking. Default maximum edge is 1024 pixels; crop/tile previews can follow. A preview is a view of settled canvas state, not a disk save or exact archival export. It can include user edits made since the preceding operation.
+The normal feedback loop uses a bounded in-memory document thumbnail/projection, encoded as PNG and returned as MCP image content alongside source dimensions, preview dimensions, scale/offset, alpha treatment, and profile information. Test color conversion; do not claim an arbitrary projection is sRGB without checking. Default maximum edge is 1024 pixels; bounded region previews also return their image-space origin and scale. A preview is a view of settled canvas state, not a disk save or exact archival export. It can include user edits made since the preceding operation.
 
-Prefer encoded image APIs over raw pixel buffers. Raw Krita pixels vary by color model/depth and may use BGRA ordering. If pixel import arrives later, isolate and test the conversion backend; `setPixelData()` is not a substitute for native brushes or evidence of undo support.
+Prefer encoded image APIs over raw pixel buffers. Raw Krita pixels vary by color model/depth and may use BGRA ordering. Pixel import and affine transforms isolate and test their RGBA/U8/sRGB, little-endian conversion backend; `setPixelData()` is not a substitute for native brushes or evidence of undo support.
 
 ## Undo, saving, and external files
 
@@ -150,7 +150,7 @@ File tools use configured input/output roots, canonical containment checks, boun
 
 ## Initial MCP surface
 
-Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 13 core tools and eight optional AI Diffusion tools, for 21 total. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
+Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 24 core tools and eight optional AI Diffusion tools, for 32 total. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
 
 | Tool | Contract |
 | --- | --- |
@@ -158,11 +158,22 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 | `krita_list_documents` | Enumerate live document handles and active-view status |
 | `krita_inspect_document` | Metadata, layers, editability, selection/frame context |
 | `krita_get_preview` | Bounded inline PNG and coordinate/color metadata |
+| `krita_get_region_preview` | In-canvas crop PNG with origin, scale, and color metadata |
+| `krita_activate_document` | Activate an existing view of an explicit document |
+| `krita_clear_selection` | Explicitly remove the active selection |
+| `krita_set_selection` | Replace with a bounded rectangle or polygon mask |
+| `krita_set_layer_properties` | Explicit paint-layer name, visibility, and opacity |
+| `krita_copy_layer` | Duplicate a supported paint layer into an explicit destination document |
+| `krita_move_layer` | Reorder a supported paint layer or place it in a group |
+| `krita_transform_layer` | Bounded pixel affine transform about an explicit pivot |
+| `krita_open_document` | Open bounded PNG/JPEG/KRA from a configured input root |
+| `krita_import_image_layer` | Import bounded PNG/JPEG into a new top paint layer |
 | `krita_create_document` | Bounded RGBA/U8/sRGB document plus an attached active view |
 | `krita_create_paint_layer` | Explicit parent/document; return node UUID |
 | `krita_list_brush_presets` | Search and paginate available preset handles |
 | `krita_paint_path` | Explicit target, preset, size, opacity, color, bounded path |
 | `krita_paint_line` | Explicit target and brush settings; two endpoint pressures |
+| `krita_paint_bezier_path` | One native path from bounded cubic segments and explicit brush settings |
 | `krita_save_document` | Layered `.kra` save to a configured output root |
 | `krita_export_png` | Separate PNG export with explicit overwrite intent |
 | `krita_get_operation` | Reconcile a running, timed-out, or duplicate operation |
@@ -176,7 +187,7 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 | `krita_get_diffusion_result` | Inspect a generated image without selecting its canvas preview |
 | `krita_apply_diffusion_result` | Apply an owned result as a new top paint layer |
 
-Add file opening and simple layer-property tools in the next increment after their modal/error/undo behavior is verified. A static capability resource can complement these tools, but clients should not require resource subscriptions to perform the basic workflow.
+Reference editing uses bounded typed commands, with direct layer/selection/pixel edits explicitly reporting no guaranteed undo grouping. Native Bézier paths reuse native painting and completion guards. Opening/importing files uses separate configured input roots. The supported behavior and exact live checks are recorded in [validation](validation.md). A static capability resource can complement these tools, but clients should not require resource subscriptions to perform the basic workflow.
 
 Tool inputs have generated JSON schemas and shared strict bridge validation. Results carry structured JSON, concise text, and optional image blocks; published per-tool output schemas remain future work. Expected tool failures use MCP tool errors with stable domain codes. A returned pending operation is a known state, not falsely reported success. Tool annotations describe side effects but do not enforce permissions.
 
