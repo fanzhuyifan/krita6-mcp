@@ -14,7 +14,7 @@ import threading
 import time
 
 from .discovery import default_state_dir, remove_discovery, write_discovery
-from .protocol import BridgeError, PLUGIN_VERSION, PROTOCOL_VERSION, validate_id, validate_request
+from .protocol import BridgeError, PLUGIN_VERSION, PROTOCOL_VERSION, validate_id
 
 
 class ArtifactStore:
@@ -263,8 +263,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._send(200, data, mime_type)
         elif self.command == "POST":
             if self.path == "/v1/operations":
-                request = validate_request(self._body(), bridge.ledger.instance_id)
-                return self._json(202, bridge.ledger.admit(request))
+                return self._json(202, bridge.ledger.admit(self._body()))
             cancel = re.fullmatch(
                 r"/v1/operations/([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})/cancel", self.path
             )

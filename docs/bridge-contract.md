@@ -36,6 +36,8 @@ There are exactly six mutations: `create_document`, `create_paint_layer`, `paint
 
 `OperationLedger(instance_id, queue_limit=32, mutation_limit=10000, clock=time.monotonic, *, read_limit=256, result_ttl=300, read_ttl=60, result_bytes_limit=16777216)` is thread-safe and independent of Qt.
 
+The HTTP transport authenticates and parses the bounded request body; `admit()` owns command validation and normalization before reserving any state. The transport does not repeat that validation. The external MCP adapter also validates before sending, but the ledger independently checks every incoming request.
+
 | Method | Behavior |
 | --- | --- |
 | `admit(request) -> snapshot` | Validate and reserve an ID and queue slot atomically. A matching admitted ID returns existing work; different normalized command/target/params return `OPERATION_ID_CONFLICT`. Queue timeout is excluded from the semantic hash. Rejected admission does not reserve an ID. |

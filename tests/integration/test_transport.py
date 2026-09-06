@@ -119,6 +119,13 @@ def test_queue_saturation_leaves_status_cancel_and_original_id_available(bridge)
         (b"{}", {"Content-Type": "text/plain"}, "UNSUPPORTED_MEDIA_TYPE"),
         (b"{}", {"Content-Length": "1048577"}, "REQUEST_TOO_LARGE"),
         (b"{}", {"Transfer-Encoding": "chunked"}, "INVALID_REQUEST"),
+        ({**operation(), "command": "run_python"}, {}, "INVALID_REQUEST"),
+        (
+            {**operation(), "params": {"width": True, "height": 32, "name": "Scratch"}},
+            {},
+            "INVALID_REQUEST",
+        ),
+        ({**operation(), "unexpected": "field"}, {}, "INVALID_REQUEST"),
     ],
 )
 def test_http_validation_precedes_admission(bridge, body, headers, expected):
@@ -127,6 +134,7 @@ def test_http_validation_precedes_admission(bridge, body, headers, expected):
     assert status >= 400
     assert data["error"]["code"] == expected
     assert server.ledger.status()["queued"] == 0
+    assert server.ledger.status()["mutations"] == 0
 
 
 def test_duplicate_authorization_header_is_rejected(bridge):
