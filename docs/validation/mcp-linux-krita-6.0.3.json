@@ -11,7 +11,7 @@
     "bridge_protocol": 1
   },
   "checks": {
-    "tool_count": 16,
+    "tool_count": 21,
     "optional_diffusion_absent": true,
     "duplicate_document_dispatched_once": true,
     "native_path_and_line": true,
@@ -47,6 +47,5 @@
       "alpha": "Krita thumbnail API"
     }
   },
-  "preview_sha256": "d44bd3d95e248f17aed26c00ac2ffb715ea3a8e5e62dcd77e330e3b0f81fd663",
-  "sanitization": "Session, document and artifact identifiers omitted. No discovery tokens or private paths retained."
+  "preview_sha256": "d44bd3d95e248f17aed26c00ac2ffb715ea3a8e5e62dcd77e330e3b0f81fd663"
 }

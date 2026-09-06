@@ -53,7 +53,7 @@ async def scenario(base, instance_id):
         }
         listing = await client.list_tools()
         tools = listing.tools if hasattr(listing, "tools") else listing
-        assert len(tools) == 16
+        assert len(tools) == 21
 
         async def read(name, **arguments):
             response = await client.call_tool(name, {"instance_id": instance_id, **arguments})
@@ -111,7 +111,7 @@ async def scenario(base, instance_id):
             "document": document,
             "observed_job_states": states,
             "checks": {
-                "sixteen_mcp_tools": True,
+                "tool_count": len(tools),
                 "real_plugin_loaded": True,
                 "document_inspection": True,
                 "paginated_jobs": True,

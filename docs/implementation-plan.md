@@ -2,7 +2,7 @@
 
 Updated 2026-09-06 for initial implementation 0.1.0.
 
-The core native workflow and 16-tool MCP surface are implemented and pass on Linux/Krita 6.0.3. This includes three read-only AI Diffusion tools tested with a pinned Qt6 development plugin. The bridge has automated protocol, transport, ledger, host-guard, diffusion-reader, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
+The core native workflow passes on Linux/Krita 6.0.3. The 21-tool MCP catalog includes eight optional AI Diffusion tools, with generation tied to a pinned Qt6 development plugin and a connected local backend. The bridge has automated protocol, transport, ledger, host-guard, diffusion-reader, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
 
 ## 0. Prove the host API before building the catalog
 
@@ -35,7 +35,13 @@ Read loaded plugin status, existing document settings, and bounded job snapshots
 
 **Evidence:** the real plugin loads in an isolated Krita 6 profile, the MCP readers return settings and synthetic upstream queue records, and the checked canvas/model/queue state remains unchanged. Native MCP painting/save also passes with AI Diffusion absent. See [integration decisions](diffusion-integration.md).
 
-**Next:** establish a local ComfyUI test backend and disposable workflow before exposing generation. Retain bridge-to-plugin job identities across admission and disconnects. Define how automatic preview/application and broad upstream cancellation interact with bridge-owned work, then verify targeted result application, color, completion, and undo. No backend is currently configured; synthetic queue tests do not satisfy these mutation gates.
+## 2b. Optional AI Diffusion generation
+
+Submit one image through existing canvas preparation, retain owned generation/result identities, inspect the generated PNG, and apply explicitly as a new top paint layer. Suppress automatic preview/application only for owned jobs. Reject unsupported source revisions, nonlocal backends, and unsupported workspace/output modes.
+
+**Gate:** use the installed local models with disposable Krita/backend profiles. Verify duplicate submission/application IDs, prompt/settings restoration, automatic-apply suppression, selection refinement, result ownership, native completion, and application undo behavior. Record actual results in [validation](validation.md). Synthetic queue tests do not establish these mutation behaviors.
+
+**Next:** broader control/region combinations, disconnect/closure races in a live session, and safe backend cancellation. No arbitrary workflow or global backend interrupt is exposed.
 
 ## 3. Useful document editing and distribution
 
@@ -72,6 +78,7 @@ plugin/
     output_paths.py         # Standard-library output-root and path checks
     host.py                 # Live identities, commands, painting, preview
     diffusion.py            # Optional observation of already loaded Qt6 plugin
+    diffusion_generation.py # Owned generation, result inspection and application
 tests/
   unit/                     # Pure state transitions and validation
   integration/              # Bridge plus fake host, real stdio MCP
@@ -81,6 +88,7 @@ tools/
   probe_krita.py             # Isolated native API proof
   smoke_krita.py             # Production plugin through real MCP
   probe_diffusion.py         # Pinned upstream plugin, synthetic jobs, real MCP reads
+  probe_diffusion_generation.py # Isolated real local backend and canvas workflow
 docs/
   validation.md
   validation/               # Sanitized reports and small test PNGs
@@ -92,4 +100,4 @@ The external wheel also includes the dependency-free bridge modules; importing t
 
 Keep the two-process architecture. A GUI timer polls nonblocking image barriers and retains the dispatch gate across native work. Native paths and lines produce real pixels and separate undo entries on the reference build; immediate foreground restoration does not alter the submitted stroke. Use Krita's bounded thumbnail API for feedback with explicit unspecified output-profile metadata. Krita's preset XML changes under bridge-owned setting updates, so synchronously refresh that handle fingerprint after restoring the originating view.
 
-Next core validation priorities are busy-image and tab-closure races, repeated stop/start under live native work, multiple simultaneous Krita instances, alternate DPI/zoom configurations, and additional presets. Windows ACL support and macOS host validation require separate work. AI Diffusion observation is implemented; generation, cancellation, and application remain gated on the backend and ownership work above.
+Next core validation priorities are busy-image and tab-closure races, repeated stop/start under live native work, multiple simultaneous Krita instances, alternate DPI/zoom configurations, and additional presets. Windows ACL support and macOS host validation require separate work. AI Diffusion source and canvas-mode expansion need separate live evidence; backend cancellation remains unimplemented.

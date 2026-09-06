@@ -21,8 +21,9 @@ overwrite permission. No output roots are needed for inspection, painting, or in
 <h2>Operation outcomes</h2>
 <p>Reuse the same operation ID and arguments when retrying uncertain work. A timeout does not undo
 an edit. Check operation status before issuing another mutation. Painting requires the requested
-document's active view and a supported, unlocked paint layer. AI Diffusion tools only inspect an
-already loaded compatible plugin; they do not generate or apply images.</p>
+document's active view and a supported, unlocked paint layer. Optional AI Diffusion tools use an
+already loaded compatible add-on and connected local backend. Poll generation separately, inspect
+the returned image, then explicitly apply it as a new layer. Backend cancellation is not exposed.</p>
 <h2>Support and license</h2>
 <p><a href="https://github.com/fanzhuyifan/krita6-mcp">Documentation and source</a> ·
 <a href="https://github.com/fanzhuyifan/krita6-mcp/issues">Issue tracker</a></p>

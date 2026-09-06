@@ -6,6 +6,7 @@ access is isolated here because the reviewed upstream revision has no public
 native-document accessor.
 """
 
+import hashlib
 import math
 import re
 import sys
@@ -21,6 +22,34 @@ MAX_TRACKED_MODELS = 128
 MAX_JOBS = 10000
 MAX_PROMPT_CHARACTERS = 4096
 MAX_LABEL_CHARACTERS = 128
+MAX_REGIONS = 32
+MAX_CONTROL_LAYERS = 64
+MAX_REGION_LINKS = 32
+
+CONTROL_MODES = frozenset(
+    {
+        "reference",
+        "style",
+        "composition",
+        "face",
+        "inpaint",
+        "universal",
+        "scribble",
+        "line_art",
+        "soft_edge",
+        "canny_edge",
+        "depth",
+        "normal",
+        "pose",
+        "segmentation",
+        "blur",
+        "stencil",
+        "hands",
+    }
+)
+INPAINT_MODES = frozenset(
+    {"automatic", "fill", "expand", "add_object", "remove_object", "replace_background", "custom"}
+)
 
 CONNECTION_STATES = frozenset(
     {
@@ -100,6 +129,40 @@ def _qt_object(value):
     if not isinstance(value, QObject) or value.thread() != QThread.currentThread():
         raise _Incompatible()
     return value
+
+
+def _boolean(value):
+    if type(value) is not bool:
+        raise _Incompatible()
+    return value
+
+
+def _node_id(value):
+    if (
+        not isinstance(value, str)
+        or re.fullmatch(
+            r"\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}",
+            value,
+        )
+        is None
+    ):
+        raise _Incompatible()
+    return value[1:-1]
+
+
+def _style_id(style):
+    filename = style.filename
+    if not isinstance(filename, str) or not 1 <= len(filename) <= 4096:
+        raise _Incompatible()
+    return "style-" + hashlib.sha256(filename.encode("utf-8")).hexdigest()[:32]
+
+
+def _optional(result, name, read, unavailable, path=None):
+    try:
+        result[name] = read()
+    except Exception:
+        result[name] = None
+        unavailable.append(path or name)
 
 
 class DiffusionReader:
@@ -248,9 +311,143 @@ class DiffusionReader:
                 "error_kind": _enum_name(model.error.kind, ERROR_KINDS),
                 "truncated_fields": truncated,
             }
+            unavailable = []
+            for name, read in (
+                ("seed", lambda: _integer(model.seed, 0, 2**64 - 1)),
+                ("fixed_seed", lambda: _boolean(model.fixed_seed)),
+                ("edit_mode", lambda: _boolean(model.edit_mode)),
+                ("region_only", lambda: _boolean(model.region_only)),
+                ("style_id", lambda: _style_id(model.style)),
+            ):
+                _optional(detail, name, read, unavailable)
+            detail["unavailable_fields"] = unavailable
+            detail["canvas_context"] = self._canvas_context(model, document, detail)
             return dict(result, document_status="tracked", model=detail)
         except Exception:
             return self._failed(result)
+
+    @staticmethod
+    def _canvas_context(model, document, detail):
+        # Avoid regions.active/name/layers and control.layer: those upstream
+        # getters update tracking, prune links, or emit signals even on reads.
+        truncated, unavailable = [], []
+        context = {
+            "snapshot_only": True,
+            "truncated_fields": truncated,
+            "unavailable_fields": unavailable,
+        }
+
+        def selection_bounds():
+            selection = document.selection()
+            if selection is None:
+                return None
+            return {
+                "x": _integer(selection.x(), -(2**31), 2**31 - 1),
+                "y": _integer(selection.y(), -(2**31), 2**31 - 1),
+                "width": _integer(selection.width(), 0, 2**31 - 1),
+                "height": _integer(selection.height(), 0, 2**31 - 1),
+            }
+
+        def active_node_id():
+            node = document.activeNode()
+            return _node_id(node.uniqueId().toString()) if node is not None else None
+
+        _optional(context, "selection_bounds", selection_bounds, unavailable)
+        _optional(context, "active_node_id", active_node_id, unavailable)
+        _optional(
+            context,
+            "inpaint_mode",
+            lambda: _enum_name(model.inpaint.mode, INPAINT_MODES),
+            unavailable,
+        )
+        # The same condition selects active_regions upstream, without invoking
+        # style resolution or any model initialization accessor.
+        editing = detail["edit_mode"] and detail["workspace"] in {"generation", "live"}
+        if detail["edit_mode"] is None:
+            context["prompt_scope"] = None
+            unavailable.append("prompt_scope")
+            return context
+        context["prompt_scope"] = "edit_root" if editing else "generation_root"
+        try:
+            root = _qt_object(model.edit_regions if editing else model.regions)
+        except Exception:
+            unavailable.append("active_regions")
+            return context
+        for field, attr in (("positive_prompt", "positive"), ("negative_prompt", "negative")):
+            _optional(
+                context,
+                field,
+                lambda attr=attr, field=field: _text(
+                    getattr(root, attr), MAX_PROMPT_CHARACTERS, field, truncated
+                ),
+                unavailable,
+            )
+
+        remaining_controls = MAX_CONTROL_LAYERS
+
+        def controls(owner, path):
+            nonlocal remaining_controls
+            queue = _qt_object(owner.control)
+            count = _integer(len(queue), 0, 1000000)
+            take = min(count, remaining_controls)
+            remaining_controls -= take
+            if take < count:
+                truncated.append(path)
+            result = []
+            for index, value in enumerate(islice(queue, take)):
+                control = {}
+                location = f"{path}[{index}]"
+                try:
+                    _qt_object(value)
+                    control = {
+                        "node_id": _node_id(value.layer_id.toString()),
+                        "mode": _enum_name(value.mode, CONTROL_MODES),
+                        "strength": _number(value.strength, 0, 100000) / 50,
+                        "start": _number(value.start, 0, 1),
+                        "end": _number(value.end, 0, 1),
+                        "is_supported": _boolean(value.is_supported),
+                    }
+                except Exception:
+                    unavailable.append(location)
+                result.append(dict(control, snapshot_index=index))
+            return result
+
+        _optional(context, "control_layers", lambda: controls(root, "control_layers"), unavailable)
+
+        def region_summaries():
+            count = _integer(len(root), 0, 1000000)
+            if count > MAX_REGIONS:
+                truncated.append("regions")
+            result = []
+            for index, value in enumerate(islice(root, MAX_REGIONS)):
+                region = {"snapshot_index": index}
+                path = f"regions[{index}]"
+                try:
+                    _qt_object(value)
+                    linked_ids = value.layer_ids
+                    if not isinstance(linked_ids, str):
+                        raise _Incompatible()
+                    ids = linked_ids.split(",", MAX_REGION_LINKS) if linked_ids else []
+                    if len(ids) > MAX_REGION_LINKS:
+                        truncated.append(path + ".linked_node_ids")
+                    region["linked_node_ids"] = [_node_id(i) for i in ids[:MAX_REGION_LINKS]]
+                    region["positive_prompt"] = _text(
+                        value.positive, MAX_PROMPT_CHARACTERS, path + ".positive_prompt", truncated
+                    )
+                    _optional(
+                        region,
+                        "control_layers",
+                        lambda: controls(value, path + ".control_layers"),
+                        unavailable,
+                        path + ".control_layers",
+                    )
+                except Exception:
+                    unavailable.append(path)
+                result.append(region)
+            return result
+
+        _optional(context, "regions", region_summaries, unavailable)
+        return context
 
     def list_jobs(self, document_id, document, offset=0, limit=50):
         self._assert_gui_thread()

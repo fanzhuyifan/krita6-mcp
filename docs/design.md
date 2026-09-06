@@ -6,7 +6,7 @@ Decision record · Initial implementation 0.1.0 · 2026-09-06
 
 Build a local MCP server for deliberate, observable editing in a running Krita 6 session. An assistant should identify the right document and layer, perform a bounded operation, inspect the canvas, and preserve editable work. Native brush behavior and trustworthy completion matter more than exposing every menu action.
 
-The first release covers document inspection/creation, paint layers, native paths and lines, bounded canvas previews, `.kra` saving, and PNG export. Target Krita 6 with Python plugin support; start with the installed Linux package. Krita 5 compatibility, remote network service, headless rendering, animation, arbitrary Python execution, general action triggering, and model/image-generation backends are outside the first release.
+The first release covers document inspection/creation, paint layers, native paths and lines, bounded canvas previews, `.kra` saving, and PNG export. Target Krita 6 with Python plugin support; start with the installed Linux package. Krita 5 compatibility, remote network service, headless rendering, animation, arbitrary Python execution, general action triggering, and standalone model/image-generation backends are outside the core bridge. Optional generation uses the existing Krita AI Diffusion add-on and its already connected local backend.
 
 The initial workflow is implemented and tested on Linux with Krita 6.0.3. The [validation record](validation.md) distinguishes verified behavior from remaining gates. Background sources are listed in [references and acknowledgments](research.md); future work remains in the [implementation plan](implementation-plan.md).
 
@@ -150,7 +150,7 @@ File tools use configured input/output roots, canonical containment checks, boun
 
 ## Initial MCP surface
 
-Use individually typed tools rather than an unbounded `execute(command, args)` tool. The following 13 core tools and three optional diffusion readers are implemented, for 16 total. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
+Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 13 core tools and eight optional AI Diffusion tools, for 21 total. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
 
 | Tool | Contract |
 | --- | --- |
@@ -170,6 +170,11 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 | `krita_diffusion_status` | Observe an already loaded AI Diffusion plugin and its connection state |
 | `krita_inspect_diffusion_document` | Read an existing document model's bounded settings and progress |
 | `krita_list_diffusion_jobs` | Paginated job state, nullable plugin IDs, and result counts |
+| `krita_list_diffusion_styles` | Available style handles and labels |
+| `krita_generate_diffusion` | Submit one generation through the existing add-on and local backend |
+| `krita_get_diffusion_generation` | Poll owned generation state and stable result handles |
+| `krita_get_diffusion_result` | Inspect a generated image without selecting its canvas preview |
+| `krita_apply_diffusion_result` | Apply an owned result as a new top paint layer |
 
 Add file opening and simple layer-property tools in the next increment after their modal/error/undo behavior is verified. A static capability resource can complement these tools, but clients should not require resource subscriptions to perform the basic workflow.
 
@@ -185,6 +190,6 @@ Provide `krita6-mcp doctor` for discovery and version diagnostics and an explici
 
 ## Optional Krita AI Diffusion integration
 
-The bridge now has three read-only tools for [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion). It reads already loaded Qt6 objects on the GUI thread without creating models, connecting a backend, or selecting previews. The [integration record](diffusion-integration.md) pins the actual Krita 6 development source and documents the private interfaces used. Stable v1.53.0 targets Krita 5; the development Qt6 code still reports that same version. Version strings alone do not establish compatibility.
+The optional [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion) adapter observes already loaded Qt6 models and submits bounded jobs through the add-on’s own canvas preparation. Generation inherits selections, regional prompts, and control/reference layers. Submission, asynchronous rendering, image inspection, and native application have separate identities and completion states. Bridge-owned jobs suppress automatic preview/application regardless of the add-on’s global setting; explicit application creates a new top paint layer. The [integration record](diffusion-integration.md) defines the private source gate, local-backend restriction, result ownership, and limits. No backend is installed or connected by an MCP tool.
 
 Generation, cancellation, and application remain a separate increment. Bind each job to an explicit document and bridge operation, preserve identities across retries, and distinguish local admission from backend dispatch and document application. Upstream cancellation can affect unrelated work, and completion follows ambient automatic-application settings; these require explicit policy and live backend evidence. An explicit backend choice is required before any cloud submission. The core bridge remains usable without AI Diffusion installed. Reference tests establish observation of the real plugin and synthetic job records; no image generation has been tested.

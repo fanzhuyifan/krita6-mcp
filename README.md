@@ -10,7 +10,7 @@ Inspect documents, paint with Krita's native brushes, preview the canvas, and sa
 
 - Document/layer inspection and creation, preset search, native paths and lines with endpoint pressure.
 - Inline PNG previews, layered `.kra` saves, and PNG export.
-- Optional [AI Diffusion inspection](docs/diffusion-integration.md); generation is not implemented.
+- Optional [AI Diffusion generation](docs/usage.md#krita-ai-diffusion): use existing canvas conditioning, inspect results, and apply as a new layer.
 
 ## Install
 
@@ -78,7 +78,7 @@ Linux host checks require Krita, Xvfb, xauth, and D-Bus. Run from a shell withou
 .venv/bin/python tools/probe_plugin_import.py
 ```
 
-Host probes use isolated profiles and scratch files. CI tests the external runtime on Python 3.10, 3.12, and 3.14; native compatibility requires the live probes. See [testing instructions](docs/testing.md) and [contributing](CONTRIBUTING.md).
+Host probes use isolated profiles and scratch files. [AI Diffusion backend tests](docs/testing.md#ai-diffusion-generation) require separately installed local models. CI tests the external runtime on Python 3.10, 3.12, and 3.14; native compatibility requires the live probes. See [testing instructions](docs/testing.md) and [contributing](CONTRIBUTING.md).
 
 ## Development approach
 

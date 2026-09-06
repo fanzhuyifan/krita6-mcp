@@ -1,7 +1,7 @@
 {
   "passed": true,
   "reference_commit": "dda58d1c63e361207ccec085efbc34dbd32f1654",
-  "source_kind": "unreleased Krita 6 development snapshot",
+  "source_kind": "Installed Arch Qt6 development package 1.53.0.r6.gdda58d1-1",
   "generated_images": false,
   "host": {
     "krita_version": "6.0.3",
@@ -23,7 +23,8 @@
     "connection_state": "auth_missing",
     "connection_error_present": false,
     "available_model_count": null,
-    "tracked_document_count": 1
+    "tracked_document_count": 1,
+    "generation_unavailable_reason": "DIFFUSION_NOT_CONNECTED"
   },
   "document": {
     "availability": "available",
@@ -47,7 +48,24 @@
       "progress": 0.0,
       "progress_kind": "generation",
       "error_kind": "none",
-      "truncated_fields": []
+      "truncated_fields": [],
+      "fixed_seed": false,
+      "edit_mode": false,
+      "region_only": false,
+      "style_id": "style-2313386f5bc1f9aa9c2b54585ff4d7da",
+      "unavailable_fields": [],
+      "canvas_context": {
+        "snapshot_only": true,
+        "truncated_fields": [],
+        "unavailable_fields": [],
+        "selection_bounds": null,
+        "inpaint_mode": "automatic",
+        "prompt_scope": "generation_root",
+        "positive_prompt": "A red test square",
+        "negative_prompt": "blur",
+        "control_layers": [],
+        "regions": []
+      }
     }
   },
   "observed_job_states": [
@@ -57,7 +75,6 @@
     "cancelled"
   ],
   "checks": {
-    "sixteen_mcp_tools": true,
     "real_plugin_loaded": true,
     "document_inspection": true,
     "paginated_jobs": true,
@@ -76,7 +93,8 @@
     "preserved_layers": true,
     "preserved_connection": true,
     "preserved_client_absent": true,
-    "no_generation_backend": true
+    "no_generation_backend": true,
+    "tool_count": 21
   },
   "upstream_files_sha256": {
     "ai_diffusion/__init__.py": "ca760fdad688fbf8d84150d82f6e7cec0b5ee1ec03fe2fd5c636c968b4ef772e",
@@ -86,9 +104,5 @@
     "ai_diffusion/model/model.py": "e662dc70fe54c7f561467b7081874095cea41d146d19b4e67bac807c20966f9d",
     "ai_diffusion/model/jobs.py": "f7d282cafa44bfe4524cf4559f49dc87291a0338d7b31e7e9f8dd78450a79cae",
     "ai_diffusion/model/connection.py": "629665d8587e46b88bd58a8dc34f993f774b7ef8e4bfc3f6c031d436c8fde162"
-  },
-  "dependency_fixture": {
-    "websockets_source": "Bundled dependency from official v1.53.0 release ZIP",
-    "release_zip_sha256": "05b4e4072faecbcfa441a8829c97492cfe35974c92e407d0197db4e78ec91cbe"
   }
 }

@@ -1,0 +1,100 @@
+{
+  "passed": true,
+  "reference_commit": "dda58d1c63e361207ccec085efbc34dbd32f1654",
+  "host": {
+    "krita_version": "6.0.3",
+    "qt_version": "6.11.2",
+    "pyqt_version": "6.11.0",
+    "python_version": "3.14.7",
+    "platform": "Linux"
+  },
+  "checks": {
+    "local_generation_capability": true,
+    "generation_0_canvas_context": true,
+    "minimum_preview_size": true,
+    "generation_0_applied_layer_handle": true,
+    "generation_0_native_undo_redo": true,
+    "generation_0_duplicate_submitted_once": true,
+    "generation_0_canvas_unchanged_until_apply": true,
+    "generation_0_settings_preserved": true,
+    "generation_0_inline_png": true,
+    "generation_0_duplicate_apply_once": true,
+    "generation_1_canvas_context": true,
+    "generation_1_applied_layer_handle": true,
+    "selection_refine_preserves_far_corner": true,
+    "generation_1_native_undo_redo": true,
+    "generation_1_duplicate_submitted_once": true,
+    "generation_1_canvas_unchanged_until_apply": true,
+    "generation_1_settings_preserved": true,
+    "generation_1_inline_png": true,
+    "generation_1_duplicate_apply_once": true
+  },
+  "generations": [
+    {
+      "workflow_kind": "generate",
+      "has_mask": false,
+      "dimensions": [
+        512,
+        512
+      ],
+      "png_sha256": "e4ec9e15cc35bbb69469db2c124667aa02d96b7f65adc3e91131482a093c6c72",
+      "preview": {
+        "mime_type": "image/png",
+        "size_bytes": 394232,
+        "source_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 512,
+          "height": 512
+        },
+        "preview_width": 512,
+        "preview_height": 512,
+        "scale": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "color": {
+          "conversion": "AI Diffusion result PNG",
+          "preview_profile": "unspecified"
+        }
+      }
+    },
+    {
+      "workflow_kind": "refine_region",
+      "has_mask": true,
+      "dimensions": [
+        288,
+        288
+      ],
+      "png_sha256": "3908448da1a5a82a0801677a936c533d6974475371e6b793385fd579c1adfc70",
+      "preview": {
+        "mime_type": "image/png",
+        "size_bytes": 137440,
+        "source_bounds": {
+          "x": 112,
+          "y": 112,
+          "width": 288,
+          "height": 288
+        },
+        "preview_width": 288,
+        "preview_height": 288,
+        "scale": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "color": {
+          "conversion": "AI Diffusion result PNG",
+          "preview_profile": "unspecified"
+        }
+      }
+    }
+  ],
+  "backend": {
+    "comfyui_version": "0.33.3",
+    "pytorch_version": "2.13.0+cu130",
+    "python_version": "3.12.14 (main, Sep  1 2026, 14:16:52) [Clang 22.1.3 ]"
+  },
+  "source_package": "krita-ai-diffusion 1.53.0.r6.gdda58d1-1",
+  "model": "dreamshaper_8.safetensors",
+  "gpu": "NVIDIA RTX 4060 Laptop GPU, 8 GiB"
+}

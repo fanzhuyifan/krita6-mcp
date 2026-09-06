@@ -39,3 +39,20 @@ The probe verifies source fingerprints, loads the real plugin in an isolated pro
 ## Recording results
 
 Record the exact Krita, Qt/PyQt, Python, platform, and relevant plugin/preset versions with the checks performed. State what remains untested. Retain only small, deliberately sanitized evidence in `docs/validation/`; never commit tokens, discovery files, personal artwork, environments, generated build artifacts, or raw profile logs.
+
+## AI Diffusion generation
+
+The generation probe requires the pinned Qt6 add-on plus an installed managed ComfyUI server with `dreamshaper_8.safetensors` and the add-on’s required models/custom nodes. It does not download or install models. Use trusted local source and server paths:
+
+```bash
+.venv/bin/python tools/probe_diffusion_generation.py \
+  --source /absolute/path/to/krita/pykrita \
+  --server /absolute/path/to/ai_diffusion/server \
+  --krita /usr/bin/krita
+```
+
+On an Arch installation, the add-on parent may be `/usr/share/krita/pykrita`; the managed backend is normally under the user’s Krita data directory. Pass `--check-backend` to verify isolated backend startup/model discovery without generating images. Use a fresh `--output` directory for each run.
+
+The harness copies backend code and custom nodes into a scratch directory, reuses installed model weights, and starts its own loopback server with fresh database/cache/input/output directories. Its Krita profile connects to that scratch server. API nodes and online model downloads are disabled. Test-owned process groups are stopped afterward; the normal Krita profile and server configuration are not used.
+
+The full probe requests a 512×512 image, inspects it, and explicitly applies it; a second request refines a rectangular selection. It checks duplicate submission/application IDs, unchanged pixels/layers before application even with upstream automatic apply enabled, restored prompt/style/settings, selection preservation, native completion, and application undo/redo. Generated images and raw profiles stay in the scratch output directory. Passing this fixture does not establish every regional/control configuration or model family.

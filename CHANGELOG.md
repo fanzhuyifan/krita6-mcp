@@ -9,7 +9,7 @@ Changes are recorded here before release. Version 0.1.0 is currently unreleased.
 - External stdio MCP server and separate PyQt6 plugin for Krita 6.
 - Thirteen core tools for discovery, document/layer inspection and creation, native paths and pressure lines, inline PNG previews, layered save, PNG export, and operation reconciliation/cancellation.
 - Authenticated loopback transport, private discovery, bounded queues/results, and mutation identities retained for the plugin session.
-- Three optional read-only tools for an already loaded Krita AI Diffusion plugin.
+- Eight optional tools for Krita AI Diffusion: inspect settings/canvas conditioning/jobs, list styles, submit one generation, poll it, inspect images, and explicitly apply a result as a new layer.
 - Isolated native and MCP probes with retained Linux/Krita 6.0.3 evidence.
 - MIT licensing, contribution/security guidance, reproducible plugin packaging, and a Python CI matrix.
 
@@ -33,4 +33,4 @@ Changes are recorded here before release. Version 0.1.0 is currently unreleased.
 - Alpha status; live-host evidence covers Linux/Krita 6.0.3 and one pixel-brush preset on small fixtures.
 - Painting is restricted to the documented color space, origin, selection, layer, and brush-engine conditions.
 - Windows is unsupported; macOS is untested. Large-document and long-session stress coverage remains limited.
-- AI Diffusion generation, cancellation, and result application are not implemented. Its tested Qt6 source is an unreleased development revision.
+- AI Diffusion generation requires the pinned Qt6 source and an already connected local backend. Backend cancellation, configuring selections/regions/controls, cloud generation, and live/custom/edit-model workflows are not exposed.

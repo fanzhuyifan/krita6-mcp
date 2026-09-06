@@ -21,6 +21,11 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | diffusion_status | empty | empty |
 | inspect_diffusion_document | document_id | empty |
 | list_diffusion_jobs | document_id | offset: int=0 (0..2147483647), limit: int=50 (1..100) |
+| list_diffusion_styles | empty | empty |
+| generate_diffusion | document_id | positive_prompt: str (1..4096), negative_prompt: str="" (0..4096), strength: finite number=1 (0.01..1), seed: int=0 (0..4294967295), style_id: optional identifier |
+| get_diffusion_generation | document_id | generation_id |
+| get_diffusion_result | document_id | generation_id, result_id, max_edge: int=1024 (32..1024) |
+| apply_diffusion_result | document_id | generation_id, result_id |
 | get_preview | document_id | max_edge: int=1024 (32..1024) |
 | list_brush_presets | empty | query: str="" (0..256 characters), offset: int=0 (0..2147483647), limit: int=50 (1..100) |
 | create_document | empty | width,height: int (1..8192, product <=16777216), name: str (1..128 characters) |
@@ -30,7 +35,7 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | save_document | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 | export_png | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 
-There are exactly six mutations: `create_document`, `create_paint_layer`, `paint_path`, `paint_line`, `save_document` and `export_png`. The other seven commands are reads. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
+There are eight mutations: `create_document`, `create_paint_layer`, `paint_path`, `paint_line`, `save_document`, `export_png`, `generate_diffusion`, and `apply_diffusion_result`. The other ten commands are reads. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
 
 ## Operation ledger
 
@@ -101,4 +106,12 @@ Failures after native dispatch, including restoration failures, retain a `Pendin
 
 Document reads match the explicit native target against existing upstream model wrappers. `document_status` is `tracked` or `model_not_created`; the latter does not initialize anything. A tracked model exposes generation-root prompts (each at most 4096 characters), style label (128), strength, batch count, model-level progress/kind, and error category. Truncated fields are named. Unknown shapes/enums fail closed as incompatible. At most 128 tracked models and 10000 queued/history jobs are inspected.
 
-Job pages contain snapshot_index, nullable job_id, kind, raw upstream state, and result_count, with total/offset/next_offset. IDs belong to the upstream plugin; indices are not durable handles. `cancelled` can include failures, and history may change between pages. There are no diffusion mutation tools. Capability metadata points to the exact tested development revision and explicitly denies current-session self-testing. See [source contract and future control gates](diffusion-integration.md).
+Job pages contain snapshot_index, nullable job_id, kind, raw upstream state, and result_count, with total/offset/next_offset. IDs belong to the upstream plugin; indices are not durable handles. `cancelled` can include failures, and history may change between pages. Capability metadata points to the exact tested development revision and explicitly denies current-session self-testing. Optional document metadata also reports seed, style ID, selection bounds, and bounded regional/control links, with unavailable fields identified independently.
+
+## Optional diffusion generation
+
+`DiffusionGenerator` owns at most 64 generation records per bridge session. Generation uses the existing document model and connected loopback ComfyUI client, gated by loaded interfaces and tested source fingerprints. The generate operation completes after input preparation and task scheduling; `get_diffusion_generation` reports the later add-on job state. Its `generation_id` equals the caller’s submission operation ID. `submission_state` is `pending`, `local_queued`, `failed`, or `unknown`; the result’s `state` distinguishes `submitting`, raw upstream job state, `submission_failed`, `submission_unknown`, and missing-history `unavailable`. This is separate from the enclosing bridge operation’s state/effect.
+
+Only finished bridge-owned jobs expose stable `result_id` handles tied to exact image objects. Result previews use the normal artifact transport and inline MCP image path. Application validates the original document/model, dimensions, color space, bounds, and image identity, then creates a new top paint layer and uses `Pending` for native completion, including errors after dispatch. Request preparation can also require a native barrier after restoring temporary layer visibility. Rendering does not hold the bridge queue gate.
+
+Generation inherits add-on selection, regional prompt, and control/reference preparation. Bridge-owned jobs suppress automatic preview/application; unowned jobs keep upstream behavior. Job history and document annotations still change. No backend installation/connection or cancellation tool is exposed. See [integration policies and limits](diffusion-integration.md).

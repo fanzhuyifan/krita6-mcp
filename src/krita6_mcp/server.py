@@ -48,7 +48,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
     server = MCPServer(
         "krita6-mcp",
         version="0.1.0",
-        instructions="Inspect krita_status first. Select explicit instance/document/layer handles. Use krita_diffusion_status to discover an already loaded Krita AI Diffusion plugin before inspecting its document metadata or existing jobs. Diffusion tools are read-only and do not load plugins, create diffusion models, connect backends, or generate images. Reuse operation_id for retries of the same edit. Pending operations require reconciliation with krita_get_operation; a timeout never proves that nothing changed. Host capabilities report validation limits.",
+        instructions="Inspect krita_status first. Select explicit instance/document/layer handles. Use krita_diffusion_status and krita_inspect_diffusion_document before generating through the loaded AI Diffusion add-on and its connected local backend. Generation inherits current selection, regional prompts and control layers. A successful generation submission is not a finished image: poll krita_get_diffusion_generation, inspect krita_get_diffusion_result, then explicitly apply it as a new layer. Reuse operation_id for retries of the same edit or generation. Pending bridge operations require reconciliation with krita_get_operation; a timeout never proves that nothing changed. Host capabilities report validation limits.",
     )
 
     async def call(method, *args, **kwargs) -> CallToolResult:
@@ -136,6 +136,81 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
             instance_id,
             target={"document_id": document_id},
             params={"offset": offset, "limit": limit},
+        )
+
+    @server.tool(annotations=READ_ONLY)
+    async def krita_list_diffusion_styles(instance_id: Identifier) -> CallToolResult:
+        """List available AI Diffusion styles and their handles without changing the current style."""
+        return await execute("list_diffusion_styles", instance_id)
+
+    @server.tool(annotations=MUTATION)
+    async def krita_generate_diffusion(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        positive_prompt: Annotated[str, Field(min_length=1, max_length=4096, strict=True)],
+        negative_prompt: Annotated[str, Field(max_length=4096, strict=True)] = "",
+        strength: Annotated[float, Field(ge=0.01, le=1, allow_inf_nan=False, strict=True)] = 1.0,
+        seed: Annotated[int, Field(ge=0, le=2**32 - 1, strict=True)] = 0,
+        style_id: Identifier | None = None,
+    ) -> CallToolResult:
+        """Submit one image through the active document's existing AI Diffusion model and local backend. Inherits canvas selection, regions and controls; strength below 1 refines the canvas. Reuse operation_id on retries. Poll generation_id separately; completion does not automatically apply pixels."""
+        params = {
+            "positive_prompt": positive_prompt,
+            "negative_prompt": negative_prompt,
+            "strength": strength,
+            "seed": seed,
+        }
+        if style_id is not None:
+            params["style_id"] = style_id
+        return await execute(
+            "generate_diffusion", instance_id, operation_id, {"document_id": document_id}, params
+        )
+
+    @server.tool(annotations=READ_ONLY)
+    async def krita_get_diffusion_generation(
+        instance_id: Identifier, document_id: Identifier, generation_id: Identifier
+    ) -> CallToolResult:
+        """Poll a bridge-owned generation and obtain stable result handles. Job progress belongs to the add-on; a queued job is not proof of backend admission."""
+        return await execute(
+            "get_diffusion_generation",
+            instance_id,
+            target={"document_id": document_id},
+            params={"generation_id": generation_id},
+        )
+
+    @server.tool(annotations=READ_ONLY)
+    async def krita_get_diffusion_result(
+        instance_id: Identifier,
+        document_id: Identifier,
+        generation_id: Identifier,
+        result_id: Identifier,
+        max_edge: Annotated[int, Field(ge=32, le=1024, strict=True)] = 1024,
+    ) -> CallToolResult:
+        """Inspect a bridge-owned generated image as an inline PNG without selecting its preview or changing canvas layers. Result handles expire when the add-on removes their images."""
+        response = await execute(
+            "get_diffusion_result",
+            instance_id,
+            target={"document_id": document_id},
+            params={"generation_id": generation_id, "result_id": result_id, "max_edge": max_edge},
+        )
+        return await attach_preview(response, instance_id)
+
+    @server.tool(annotations=MUTATION)
+    async def krita_apply_diffusion_result(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        generation_id: Identifier,
+        result_id: Identifier,
+    ) -> CallToolResult:
+        """Apply an inspected bridge-owned result to its original active document as a new top paint layer at the generation bounds. Reuse operation_id on retries; does not replace layers or resize the canvas."""
+        return await execute(
+            "apply_diffusion_result",
+            instance_id,
+            operation_id,
+            {"document_id": document_id},
+            {"generation_id": generation_id, "result_id": result_id},
         )
 
     @server.tool(annotations=READ_ONLY)
@@ -303,7 +378,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         response = await call(
             bridge.get_operation, instance_id=instance_id, operation_id=operation_id
         )
-        if response.structured_content.get("command") == "get_preview":
+        if response.structured_content.get("command") in {"get_preview", "get_diffusion_result"}:
             return await attach_preview(response, instance_id)
         return response
 
@@ -318,7 +393,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
     async def krita_cancel_operation(
         instance_id: Identifier, operation_id: Identifier
     ) -> CallToolResult:
-        """Cancel queued work atomically. For running native work this records cancellation intent; it cannot forcibly stop Krita."""
+        """Cancel queued bridge work atomically. For running work this records intent; it cannot stop Krita or cancel a submitted AI Diffusion backend job."""
         return await call(
             bridge.cancel_operation, instance_id=instance_id, operation_id=operation_id
         )

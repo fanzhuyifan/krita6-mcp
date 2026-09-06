@@ -1,59 +1,50 @@
 # Krita AI Diffusion integration
 
-Source decision record · 2026-09-06
+Decision record · 2026-09-06
 
-## Scope and upstream baseline
+The optional adapter integrates with the existing [Krita AI Diffusion add-on](https://github.com/Acly/krita-ai-diffusion). It uses the add-on’s document model, canvas preparation, connected backend client, job queue, and result application. MCP tools do not install the add-on, start a backend, or construct a separate ComfyUI workflow.
 
-The implemented adapter provides optional, read-only observation of an already loaded [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion) plugin. It reports connection state, settings of an existing document model, and bounded job snapshots. The core bridge continues to work when AI Diffusion is absent. It does not install or initialize AI Diffusion, connect a backend, submit generation, cancel jobs, select previews, or apply results.
+## Source boundary
 
-Source inspection used a local archive of commit [`dda58d1c63e361207ccec085efbc34dbd32f1654`](https://github.com/Acly/krita-ai-diffusion/commit/dda58d1c63e361207ccec085efbc34dbd32f1654), the Qt6 migration merge from [PR #2491](https://github.com/Acly/krita-ai-diffusion/pull/2491). This is a development source baseline, not a released Krita 6 package. The latest stable release found during this investigation, [v1.53.0](https://github.com/Acly/krita-ai-diffusion/releases/tag/v1.53.0), explicitly targets Krita 5. Its release commit is `0217cd2197fcadbd70d7e63af25e29cc21cb7c8b`.
+Generation targets Qt6 development commit [`dda58d1c63e361207ccec085efbc34dbd32f1654`](https://github.com/Acly/krita-ai-diffusion/commit/dda58d1c63e361207ccec085efbc34dbd32f1654), also packaged locally as `1.53.0.r6.gdda58d1`. Stable v1.53.0 targets Krita 5; both sources report version 1.53.0. The mutation adapter checks source fingerprints and loaded interfaces, rather than trusting that version string. Other revisions need review and live validation before enabling generation.
 
-The development baseline still reports `__version__ = "1.53.0"`, but its bootstrap requires Krita 6 and its model, document, connection, and job modules use PyQt6. A version string alone therefore cannot distinguish the stable Qt5 release from this Qt6 source. Capability reporting must separate the reported version, observed interface compatibility, and the exact source/build for which live evidence exists. Do not present every installation reporting 1.53.0 as supported. See the pinned [bootstrap](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/__init__.py).
+Detection inspects already loaded modules. All add-on, Qt, and Krita access runs on the GUI thread; network workers receive plain JSON or encoded PNG bytes. Read tools do not create models, refresh layer managers, change job selection, or connect a backend. Open the AI Diffusion docker for the target document first so its document model exists.
 
-The source archive omits the `websockets` submodule required by that bootstrap. An isolated test installation must include its pinned dependency. Do not install another Qt binding into Krita or use a personal AI Diffusion profile as a test fixture. Upstream extension initialization loads settings, starts its event loop, creates root state, and can schedule backend autostart; these are upstream lifecycle effects, not steps performed by an observation tool. See [extension initialization](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/extension.py).
+Only an already connected local loopback ComfyUI client is accepted for generation. Cloud and remote backends are outside this implementation. Status reports observed connection state, not a fresh network health check. Diagnostics omit backend URLs, authentication data, raw errors, and workflow graphs.
 
-## Adapter boundary
+## Workflow
 
-| Bridge command | Read-only contract |
-| --- | --- |
-| `diffusion_status` | Detect loaded modules and compatible Qt6 interfaces; report plugin version, connection state, and bounded capability/count information |
-| `inspect_diffusion_document` | Resolve an explicit bridge document handle and inspect its existing AI Diffusion model, or report that no model exists |
-| `list_diffusion_jobs` | Inspect that document model's current queue/history using `offset` and `limit`, with at most 100 entries per response |
+1. Discover `krita_diffusion_status`, inspect `krita_inspect_diffusion_document`, and optionally list `krita_list_diffusion_styles`.
+2. Call `krita_generate_diffusion` with explicit instance/document handles, a reusable `operation_id`, positive/negative prompts, strength, seed, and optionally a listed style handle. The document must be active and use RGBA/U8/standard sRGB with a zero-offset canvas. One image is requested, independent of the add-on’s batch setting.
+3. Poll `krita_get_diffusion_generation` using the returned `generation_id`. A successful bridge submission means scheduling succeeded; rendering has its own lifecycle. A plugin job ID initially means local queue admission, not confirmed backend acceptance.
+4. Inspect `krita_get_diffusion_result` with the returned `result_id`. It returns an inline PNG up to 1024 pixels per edge without selecting a canvas preview.
+5. Call `krita_apply_diffusion_result` with a new reusable `operation_id`. Application targets the original document and generation bounds, creates a new top paint layer, and waits for Krita’s native completion barrier.
 
-All access runs inside the existing GUI executor. HTTP workers and the external MCP process receive plain JSON only. Detection uses modules already present in `sys.modules`; it must not import AI Diffusion to activate it. A missing, partially initialized, incompatible, or stale plugin produces an explicit availability result or domain error. It must not silently initialize replacement state.
+The [usage guide](usage.md) contains an example; [validation](validation.md) records which live cases passed.
 
-The adapter uses a small allowlist of fields with bounded strings and collections. It does not return raw object dictionaries, diagnostic logs, settings dumps, server URLs, authorization fields, cloud account information, workflow graphs, or raw error messages/data. Connection/model error categories can be reported without their potentially sensitive text. Prompts, where explicitly included in document inspection, are bounded user-content fields, not executable instructions.
+## Canvas behavior
 
-## Existing interfaces and identity
+Generation calls the add-on’s existing preparation logic:
 
-The pinned [root model](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/model/root.py) exposes `root.models`, returning existing `DocumentModel` objects, and `root.connection`. Reading these properties does not create a model. In contrast, `root.active_model` calls `model_for_active_document()`, which prunes models, can create one, attaches persistence, and can import a prompt from disk. Neither accessor belongs in the read-only adapter.
+- Strength below 1 refines the current canvas.
+- A selection supplies the add-on’s inpainting/refinement mask and context.
+- Existing linked regions contribute their regional prompts and masks.
+- Existing control/reference layers provide conditioning, including region-specific controls.
 
-Each `DocumentModel.document` is an upstream wrapper. Match its existing native `_doc` against a freshly resolved Krita document using Krita's document equality, on the GUI thread. Catch invalid/deleted wrappers and fail clearly. Keep the bridge's own document handle as the public target identity. Upstream `KritaDocument.id` comes from a document annotation and can be copied with a document; it is not proof of current native ownership. Do not instantiate `KritaDocument` or call `KritaDocument.active()` during inspection: those paths can write an annotation and start a timer. These private wrapper details are isolated in the adapter because they can change upstream. See the pinned [document wrapper](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/document.py).
+Document inspection exposes bounded settings, selection bounds, regional prompts, and control/reference layer links without activating them. MCP does not yet create or edit selections, regions, or control layers; configure those in the add-on. Ordinary generation is supported; live, animation, custom workflow, edit-model, and layered-output modes are excluded.
 
-The [connection object](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/model/connection.py) has states `disconnected`, `connecting`, `connected`, `error`, `discover_models`, and authentication-related states. `client_if_connected` returns the stored client without checking the current state; do not infer connectivity merely from a non-null client. A temporary backend disconnection may leave the reported state connected while setting an error, so report the observed state and error presence without claiming a fresh health check. No network probe or model refresh is part of status.
+The request supplies the root/global prompts, which the add-on combines with configured regional and style prompts; it does not replace each region’s prompt. The request temporarily overrides prompt/style/strength/seed settings while preparing input, then restores them before yielding the GUI thread. Canvas layer visibility is restored if preparation fails. Result placement uses the captured generation bounds; changing document geometry or color settings invalidates application. Intervening ordinary painting is allowed, so inspect the current canvas before applying an older result.
 
-Useful document fields include workspace, style label, root positive/negative prompts, strength, seed and fixed-seed flag, batch count, queue mode, and model progress/error category. These are upstream UI/model state, not a validated future request or a guarantee that a model is available on the backend. Model-level progress and errors do not identify a particular job.
+Bridge-owned jobs suppress the add-on’s automatic preview/apply action through a narrowly scoped per-model completion hook. Other jobs retain the original completion behavior, and the hook is removed when owned pending jobs settle. This prevents layer/pixel application before explicit review. The add-on still records generated images in its history and document annotations; generation is a state-changing operation and can mark the document modified.
 
-## Job snapshots
+Explicit application uses the add-on’s new-layer behavior with region restructuring disabled. It does not follow ambient replace-layer, canvas-resize, or regional regrouping settings. Masked results retain their generated alpha. Application is not promised to be one undo action; use the recorded native evidence for tested behavior.
 
-The pinned [job queue](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/model/jobs.py) is iterable and has a length. A `Job` contains `id`, kind, state, timestamp, parameters, results, and per-result use flags. Its ID can be null before local admission finishes. Preserve this absence; an array index, prompt, timestamp, or result position must not become a fabricated durable job identity.
+## Ownership, retries, and limits
 
-The upstream states are `queued`, `executing`, `finished`, and `cancelled`. Preserve their names as upstream observations. There is no separate failed state: model error handling can mark a job cancelled, and queue repair can label earlier stale jobs cancelled. A cancelled snapshot therefore does not prove that a particular backend operation was interrupted. History is pruned; some job kinds are removed on completion, and deleting a result shifts later result indices. Pagination is a view of the current queue, not a durable history cursor. Counts of available results do not promise later retrieval.
+The bridge reserves `generation_id = operation_id` before scheduling. Reuse the same operation ID and payload after a timeout; the existing ledger prevents duplicate dispatch within that bridge instance. Poll a generation separately from its submission operation. Submission failures after possible backend dispatch retain an uncertain outcome and must not trigger automatic resubmission.
 
-Never select a job to inspect it. Updating `jobs.selection` invokes the model's preview handler, which can create or change a Krita layer. Reading job/result counts requires neither selection nor pixel extraction.
+Generation records belong to an exact document model and job. Result handles identify exact image objects rather than mutable queue positions. Closing the document, removing a job/result, or restarting the bridge invalidates the corresponding handles. Weak references avoid retaining images after the add-on prunes history. The session accepts at most 64 generation records and rejects further submissions instead of evicting ownership records. Generated canvas/workflow dimensions are bounded to 16 megapixels.
 
-## Future generation, cancellation, and application
+`krita_list_diffusion_jobs` remains an observational view of all jobs, including user-created ones; it does not grant mutation ownership. Upstream job IDs may be null, and `cancelled` can include failures or queue repair. Model-level progress is not job-specific.
 
-Generation control requires a separate increment and live backend evidence. The current [document model](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/model/model.py) exposes `generate()`, which returns no job handle and schedules an asynchronous enqueue operation. The model adds a job with a null ID, then assigns the ID returned by its client. A future bridge must retain its own operation identity before scheduling and distinguish local admission, backend dispatch, generation completion, and document application. Repeating `generate()` after a lost response is not reconciliation.
-
-Upstream IDs are plugin-local job identities. The [ComfyUI client](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/backend/comfy_client.py) allocates an ID and queues locally before remote submission; it later sends that ID as `prompt_id` and verifies the returned ID. Its interrupt operation posts to the backend's global `/interrupt` endpoint without a job ID. Consequently, that operation cannot be presented as cancellation scoped to one bridge document or bridge-owned job.
-
-The [cloud client](https://github.com/Acly/krita-ai-diffusion/blob/dda58d1c63e361207ccec085efbc34dbd32f1654/ai_diffusion/backend/cloud_client.py) maintains distinct local and remote IDs. Its interruption behavior depends on the current send/generate stage and allows receive-stage work to finish. A future cancellation API must verify ownership and report requested versus confirmed outcomes. It also needs an explicit authorized backend choice before submitting artwork or spending cloud credits.
-
-The document model's queued cancellation clears every queued job for that document, and replacement queue mode also cancels existing queued work. Completion can automatically preview or apply a generated image according to global settings. `apply_generated_result()` also follows ambient application settings, can replace layers or resize the canvas, and has special layered/animation behavior. Generation and application therefore need explicit, tested policies before exposing them as independent tools; invoking upstream UI actions is insufficient.
-
-## Validation gates
-
-Read-only acceptance requires an isolated Krita 6 host with the exact pinned development plugin: absent plugin, initialized plugin without a backend, existing and missing document models, stale targets, bounded job pagination, and unchanged document/model/queue state after reads. Synthetic jobs in a test-only harness can validate serialization and state labels, but do not establish generation, backend cancellation, result application, or undo compatibility.
-
-Record the actual test results in [validation.md](validation.md). This source record establishes interface choices and limits; it does not establish that a live test passed. No generation backend is configured for this increment. Later mutation work needs explicit scratch-document/backend tests for admission identity, disconnect reconciliation, job ownership, automatic preview/application behavior, exact target application, native completion, color, and undo.
+There is no backend cancellation tool. `krita_cancel_operation` cancels only unstarted bridge work; after submission it cannot interrupt rendering. Upstream’s global interrupt and broad queue cancellation cannot safely stand in for cancellation of one bridge-owned job. Pending generation may continue after the MCP client or bridge stops; inspect the add-on before starting a new session and intentionally resubmitting.

@@ -30,6 +30,7 @@ from krita import InfoObject, Krita, ManagedColor, Preset
 
 from .protocol import BridgeError, COMMANDS
 from .diffusion import DiffusionReader
+from .diffusion_generation import DiffusionGenerator
 from .output_paths import resolve_output_path
 
 
@@ -77,6 +78,9 @@ class KritaHost:
         self._documents = {}
         self._presets = {}
         self._diffusion = DiffusionReader(self._assert_gui_thread)
+        self._diffusion_generator = DiffusionGenerator(
+            self._assert_gui_thread, self._diffusion, self.artifacts
+        )
 
     @staticmethod
     def _assert_gui_thread():
@@ -124,7 +128,10 @@ class KritaHost:
                     "nodes_per_document": MAX_LAYER_NODES,
                 },
                 "output_roots": sorted(self.output_roots),
-                "ai_diffusion": self._diffusion.capabilities(),
+                "ai_diffusion": {
+                    **self._diffusion.capabilities(),
+                    **self._diffusion_generator.capabilities(),
+                },
             },
         }
 
@@ -135,6 +142,10 @@ class KritaHost:
                 "HOST_MODAL", "Close the active Krita modal dialog before using the bridge."
             )
         command = request["command"]
+        if command == "generate_diffusion":
+            return self._generate_diffusion(
+                request["target"], request["params"], request["operation_id"]
+            )
         # This map is intentionally fixed. There is no arbitrary method dispatch.
         handlers = {
             "list_documents": self._list_documents,
@@ -150,23 +161,96 @@ class KritaHost:
             "diffusion_status": self._diffusion_status,
             "inspect_diffusion_document": self._inspect_diffusion_document,
             "list_diffusion_jobs": self._list_diffusion_jobs,
+            "list_diffusion_styles": self._list_diffusion_styles,
+            "get_diffusion_generation": self._get_diffusion_generation,
+            "get_diffusion_result": self._get_diffusion_result,
+            "apply_diffusion_result": self._apply_diffusion_result,
         }
         if command not in handlers:
             raise BridgeError("UNKNOWN_COMMAND", "This host does not support the command.")
         return handlers[command](request.get("target", {}), request.get("params", {}))
 
     def _diffusion_status(self, target, params):
-        return self._diffusion.status()
+        return {**self._diffusion.status(), **self._diffusion_generator.capabilities()}
+
+    def _list_diffusion_styles(self, target, params):
+        return self._diffusion_generator.list_styles()
+
+    def _diffusion_target(self, document_id):
+        document = self._document(document_id)
+        self._require_ready(document)
+        self._writable_color(document)
+        window = self.app.activeWindow()
+        view = window.activeView() if window is not None else None
+        if view is None or view.document() != document:
+            raise BridgeError(
+                "TARGET_NOT_ACTIVE", "Activate the requested document in Krita first."
+            )
+        if document.xOffset() != 0 or document.yOffset() != 0:
+            raise BridgeError(
+                "UNSUPPORTED_DOCUMENT", "AI generation requires a zero-offset canvas."
+            )
+        return document
+
+    def _generate_diffusion(self, target, params, operation_id):
+        document = self._diffusion_target(target["document_id"])
+        try:
+            result = self._diffusion_generator.generate(
+                target["document_id"], document, params, operation_id
+            )
+        except BridgeError as exc:
+            # Failed preparation may have restored hidden control layers and
+            # scheduled a projection refresh even when its final effect is none.
+            return Pending(self, target["document_id"], None, error=exc)
+        # Preparing canvas input can hide/restore control layers and refresh the
+        # projection. Settle that work; the separate generation may keep running.
+        return Pending(self, target["document_id"], result)
+
+    def _get_diffusion_generation(self, target, params):
+        document = self._document(target["document_id"])
+        return self._diffusion_generator.get_generation(
+            target["document_id"], document, params["generation_id"]
+        )
+
+    def _get_diffusion_result(self, target, params):
+        document = self._document(target["document_id"])
+        return self._diffusion_generator.get_result(
+            target["document_id"],
+            document,
+            params["generation_id"],
+            params["result_id"],
+            params["max_edge"],
+        )
+
+    def _apply_diffusion_result(self, target, params):
+        document = self._diffusion_target(target["document_id"])
+        self._require_layer_capacity(document)
+        self._unlocked_ancestry(document.rootNode())
+        try:
+            result = self._diffusion_generator.apply_result(
+                target["document_id"], document, params["generation_id"], params["result_id"]
+            )
+        except BridgeError as exc:
+            if exc.effect == "none":
+                raise
+            return Pending(self, target["document_id"], None, error=exc)
+        return Pending(self, target["document_id"], result)
 
     def _inspect_diffusion_document(self, target, params):
         document = self._document(target["document_id"])
-        return self._diffusion.inspect_document(target["document_id"], document)
+        return {
+            **self._diffusion.inspect_document(target["document_id"], document),
+            **self._diffusion_generator.capabilities(),
+        }
 
     def _list_diffusion_jobs(self, target, params):
         document = self._document(target["document_id"])
-        return self._diffusion.list_jobs(
-            target["document_id"], document, params.get("offset", 0), params.get("limit", 50)
-        )
+        return {
+            **self._diffusion.list_jobs(
+                target["document_id"], document, params.get("offset", 0), params.get("limit", 50)
+            ),
+            **self._diffusion_generator.capabilities(),
+        }
 
     def _reconcile_documents(self):
         fresh = self.app.documents()

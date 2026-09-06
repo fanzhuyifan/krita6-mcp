@@ -50,7 +50,7 @@ def adapter(monkeypatch):
 def loaded(adapter, monkeypatch):
     QObject = adapter.QObject
     ConnectionState = Enum("ConnectionState", ["disconnected", "connected", "auth_error"])
-    Workspace = Enum("Workspace", ["generation"])
+    Workspace = Enum("Workspace", ["generation", "live", "upscaling"])
     ProgressKind = Enum("ProgressKind", ["generation", "upload"])
     ErrorKind = Enum("ErrorKind", ["none", "server_error"])
     JobState = Enum("JobState", ["queued", "executing", "finished", "cancelled"])
@@ -67,6 +67,12 @@ def loaded(adapter, monkeypatch):
 
         def __eq__(self, other):
             return isinstance(other, NativeDocument) and self.identity == other.identity
+
+        def selection(self):
+            return None
+
+        def activeNode(self):
+            return None
 
     class Queue(QObject):
         def __init__(self, entries):
@@ -137,7 +143,11 @@ def loaded(adapter, monkeypatch):
         document=QObject(_doc=native),
         regions=QObject(positive="sunrise", negative="fog"),
         workspace=Workspace.generation,
-        style=SimpleNamespace(name="Watercolor"),
+        style=SimpleNamespace(name="Watercolor", filename="watercolor.json"),
+        seed=42,
+        fixed_seed=True,
+        edit_mode=False,
+        region_only=False,
         strength=0.75,
         batch_count=2,
         progress=-1,
@@ -175,7 +185,73 @@ def loaded(adapter, monkeypatch):
         root_module=root_module,
         NativeDocument=NativeDocument,
         states=ConnectionState,
+        workspaces=Workspace,
         forbidden=forbidden,
+    )
+
+
+@pytest.fixture
+def canvas(adapter, loaded):
+    class Collection(adapter.QObject):
+        def __init__(self, entries=(), **fields):
+            super().__init__(**fields)
+            self.entries = list(entries)
+            self.visited = 0
+
+        def __len__(self):
+            return len(self.entries)
+
+        def __iter__(self):
+            for entry in self.entries:
+                self.visited += 1
+                yield entry
+
+        @property
+        def active(self):
+            raise AssertionError("Reading active regions updates the model")
+
+    class Region(adapter.QObject):
+        @property
+        def layers(self):
+            raise AssertionError("Reading region layers prunes links")
+
+        @property
+        def name(self):
+            raise AssertionError("Reading the region name prunes links")
+
+    class Control(adapter.QObject):
+        @property
+        def layer(self):
+            raise AssertionError("Reading the control layer updates tracking")
+
+    uid = "{00000000-0000-0000-0000-000000000042}"
+    control = Control(
+        layer_id=SimpleNamespace(toString=lambda: uid),
+        mode=Enum("ControlMode", ["reference"]).reference,
+        strength=75,
+        start=0.1,
+        end=0.9,
+        is_supported=True,
+    )
+    region = Region(layer_ids=uid, positive="red flowers", control=Collection([control]))
+    root = Collection([region], positive="garden", negative="fog", control=Collection([control]))
+    loaded.model.regions = root
+    loaded.model.edit_regions = Collection(
+        positive="make it snowy", negative="", control=Collection()
+    )
+    loaded.model.inpaint = SimpleNamespace(mode=Enum("InpaintMode", ["automatic"]).automatic)
+    document = loaded.model.document._doc
+    document.selection = lambda: SimpleNamespace(
+        x=lambda: 10, y=lambda: 20, width=lambda: 80, height=lambda: 60
+    )
+    document.activeNode = lambda: SimpleNamespace(uniqueId=lambda: control.layer_id)
+    return SimpleNamespace(
+        document=document,
+        root=root,
+        region=region,
+        control=control,
+        Collection=Collection,
+        uid=uid,
     )
 
 
@@ -232,6 +308,108 @@ def test_inspection_matches_fresh_document_wrappers_and_bounds_prompt_text(adapt
     assert detail["error_kind"] == "server_error"
     assert "SECRET_URL_TOKEN" not in json.dumps(result)
     assert loaded.forbidden == []
+
+
+def test_canvas_metadata_is_plain_bounded_observation(adapter, loaded, canvas):
+    detail = adapter.reader.inspect_document("doc", canvas.document)["model"]
+    assert detail["seed"] == 42
+    assert detail["fixed_seed"] is True
+    assert detail["style_id"] == adapter.module._style_id(loaded.model.style)
+    assert "watercolor.json" not in json.dumps(detail)
+    context = detail["canvas_context"]
+    assert context["selection_bounds"] == {"x": 10, "y": 20, "width": 80, "height": 60}
+    assert context["active_node_id"] == canvas.uid[1:-1]
+    assert context["prompt_scope"] == "generation_root"
+    assert context["inpaint_mode"] == "automatic"
+    assert context["positive_prompt"] == "garden"
+    assert context["regions"][0]["linked_node_ids"] == [canvas.uid[1:-1]]
+    assert context["regions"][0]["positive_prompt"] == "red flowers"
+    control = context["control_layers"][0]
+    assert control["mode"] == "reference"
+    assert control["node_id"] == canvas.uid[1:-1]
+    assert control["strength"] == 1.5
+    assert context["unavailable_fields"] == []
+    assert context["truncated_fields"] == []
+    assert loaded.forbidden == []
+    assert json.loads(json.dumps(detail)) == detail
+
+
+@pytest.mark.parametrize(
+    "workspace,expected",
+    [("generation", "edit_root"), ("live", "edit_root"), ("upscaling", "generation_root")],
+)
+def test_canvas_prompt_scope_matches_existing_edit_workspace(
+    adapter, loaded, canvas, workspace, expected
+):
+    loaded.model.edit_mode = True
+    loaded.model.workspace = loaded.workspaces[workspace]
+    result = adapter.reader.inspect_document("doc", canvas.document)
+    context = result["model"]["canvas_context"]
+    assert context["prompt_scope"] == expected
+    assert context["positive_prompt"] == ("make it snowy" if expected == "edit_root" else "garden")
+
+
+def test_optional_metadata_failure_preserves_basic_inspection_without_details(
+    adapter, loaded, canvas
+):
+    loaded.model.seed = True
+    loaded.model.style.filename = None
+    loaded.model.inpaint = None
+    canvas.region.layer_ids = "not a node id SECRET_URL_TOKEN"
+    canvas.control.end = float("nan")
+
+    def stale_selection():
+        raise RuntimeError("SECRET_URL_TOKEN")
+
+    canvas.document.selection = stale_selection
+    result = adapter.reader.inspect_document("doc", canvas.document)
+    assert result["availability"] == "available"
+    assert result["document_status"] == "tracked"
+    assert result["model"]["positive_prompt"] == "garden"
+    assert result["model"]["seed"] is None
+    assert set(result["model"]["unavailable_fields"]) == {"seed", "style_id"}
+    context = result["model"]["canvas_context"]
+    assert context["selection_bounds"] is None
+    assert set(context["unavailable_fields"]) == {
+        "selection_bounds",
+        "inpaint_mode",
+        "control_layers[0]",
+        "regions[0]",
+    }
+    assert "SECRET_URL_TOKEN" not in json.dumps(result)
+
+
+def test_region_and_control_snapshot_limits_bound_total_work(adapter, loaded, canvas):
+    canvas.root.entries = [canvas.region] * 100
+    canvas.root.control.entries = [canvas.control] * 40
+    canvas.region.control.entries = [canvas.control] * 40
+    canvas.region.layer_ids = ",".join([canvas.uid] * 80)
+    canvas.region.positive = "p" * 5000
+    context = adapter.reader.inspect_document("doc", canvas.document)["model"]["canvas_context"]
+    assert len(context["regions"]) == adapter.module.MAX_REGIONS
+    controls = context["control_layers"] + [
+        c for region in context["regions"] for c in region["control_layers"]
+    ]
+    assert len(controls) == adapter.module.MAX_CONTROL_LAYERS
+    assert canvas.root.visited == adapter.module.MAX_REGIONS
+    assert (
+        canvas.root.control.visited + canvas.region.control.visited
+        == adapter.module.MAX_CONTROL_LAYERS
+    )
+    assert len(context["regions"][0]["linked_node_ids"]) == adapter.module.MAX_REGION_LINKS
+    assert len(context["regions"][0]["positive_prompt"]) == adapter.module.MAX_PROMPT_CHARACTERS
+    assert "regions" in context["truncated_fields"]
+    assert "regions[0].control_layers" in context["truncated_fields"]
+    assert "regions[0].linked_node_ids" in context["truncated_fields"]
+
+
+def test_absent_optional_edit_flag_does_not_guess_canvas_prompt_scope(adapter, loaded, canvas):
+    del loaded.model.edit_mode
+    result = adapter.reader.inspect_document("doc", canvas.document)
+    assert result["document_status"] == "tracked"
+    context = result["model"]["canvas_context"]
+    assert context["prompt_scope"] is None
+    assert "prompt_scope" in context["unavailable_fields"]
 
 
 def test_untracked_document_is_reported_without_creating_model(adapter, loaded):

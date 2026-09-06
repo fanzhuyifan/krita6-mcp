@@ -16,6 +16,6 @@ The project is an alpha. Security fixes target the current development branch an
 - Output roots and explicit overwrite flags constrain file tools. Path validation is not race-proof isolation against another process running as the same OS user. The bridge runs with Krita's OS permissions.
 - A client timeout does not undo an operation. Mutation IDs prevent repeated dispatch during one plugin session; they are not durable across a Krita crash. Inspect uncertain outcomes before issuing a new mutation ID.
 - The external MCP runtime is separate from Krita. The plugin exposes no caller-supplied Python, shell, or arbitrary action execution.
-- Optional AI Diffusion readers inspect an already loaded plugin. They do not connect a backend or submit artwork for generation.
+- Optional AI Diffusion generation sends prepared canvas content through the already loaded add-on to its connected loopback ComfyUI backend. Cloud/remote clients are rejected; MCP tools do not connect or install backends. Generation updates add-on history; canvas application requires a separate tool. Source fingerprints gate private mutation interfaces.
 
 See [the protocol contract](docs/bridge-contract.md) and [validation limits](docs/validation.md) for details. These controls are implementation claims with documented tests, not a promise that software is free of vulnerabilities.

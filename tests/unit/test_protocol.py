@@ -104,6 +104,11 @@ def test_catalog_samples_cover_every_command():
         "diffusion_status": ({}, {}),
         "inspect_diffusion_document": (doc, {}),
         "list_diffusion_jobs": (doc, {}),
+        "list_diffusion_styles": ({}, {}),
+        "generate_diffusion": (doc, {"positive_prompt": "A green tree"}),
+        "get_diffusion_generation": (doc, {"generation_id": "generate-1"}),
+        "get_diffusion_result": (doc, {"generation_id": "generate-1", "result_id": "image-1"}),
+        "apply_diffusion_result": (doc, {"generation_id": "generate-1", "result_id": "image-1"}),
         "create_document": ({}, {"width": 4096, "height": 4096, "name": "Scratch"}),
         "create_paint_layer": (doc, {"name": "Paint"}),
         "paint_path": ({**doc, "node_id": "node-1"}, {**brush, "points": [[1, 1], [2, 2]]}),
@@ -112,7 +117,7 @@ def test_catalog_samples_cover_every_command():
         "export_png": (doc, {"root": "output", "path": "scratch.png"}),
     }
     assert set(samples) == COMMANDS
-    assert len(MUTATIONS) == 6
+    assert len(MUTATIONS) == 8
     for command, (target, params) in samples.items():
         normalized = validate_request(request(command, target=target, params=params), "instance-a")
         assert normalized["command"] == command
@@ -198,3 +203,79 @@ def test_diffusion_job_page_accepts_exact_upper_bounds():
         request("list_diffusion_jobs", target={"document_id": "doc-1"}, params=params), "instance-a"
     )
     assert normalized["params"] == params
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"positive_prompt": ""},
+        {"positive_prompt": "x" * 4097},
+        {"positive_prompt": "bad\x00prompt"},
+        {"negative_prompt": "x" * 4097},
+        {"strength": 0},
+        {"strength": 1.01},
+        {"strength": math.nan},
+        {"strength": True},
+        {"seed": -1},
+        {"seed": 2**32},
+        {"seed": True},
+        {"seed": 1.5},
+        {"style_id": "../style.json"},
+        {"workflow": {}},
+        {"batch_count": 2},
+        {"server_url": "https://example.com"},
+        {"apply": True},
+    ],
+)
+def test_generation_rejects_unbounded_or_ambient_controls(changes):
+    with pytest.raises(BridgeError) as error:
+        validate_request(
+            request(
+                "generate_diffusion",
+                target={"document_id": "doc-1"},
+                params={"positive_prompt": "A green tree", **changes},
+            ),
+            "instance-a",
+        )
+    assert error.value.code == "INVALID_REQUEST"
+
+
+def test_generation_defaults_are_part_of_retry_identity():
+    body = request(
+        "generate_diffusion",
+        target={"document_id": "doc-1"},
+        params={"positive_prompt": "A green tree"},
+    )
+    normalized = validate_request(body, "instance-a")
+    assert normalized["params"] == {
+        "positive_prompt": "A green tree",
+        "negative_prompt": "",
+        "strength": 1.0,
+        "seed": 0,
+    }
+    assert "generate_diffusion" in MUTATIONS
+    assert "apply_diffusion_result" in MUTATIONS
+
+
+@pytest.mark.parametrize(
+    "command,params",
+    [
+        ("get_diffusion_generation", {}),
+        ("get_diffusion_generation", {"generation_id": "gen-1", "cancel": True}),
+        ("get_diffusion_result", {"generation_id": "gen-1"}),
+        ("apply_diffusion_result", {"generation_id": "gen-1", "index": 0}),
+        (
+            "apply_diffusion_result",
+            {"generation_id": "gen-1", "result_id": "img-1", "replace": True},
+        ),
+        (
+            "get_diffusion_result",
+            {"generation_id": "gen-1", "result_id": "img-1", "max_edge": 1025},
+        ),
+    ],
+)
+def test_generation_handles_and_result_policy_are_explicit(command, params):
+    with pytest.raises(BridgeError):
+        validate_request(
+            request(command, target={"document_id": "doc-1"}, params=params), "instance-a"
+        )

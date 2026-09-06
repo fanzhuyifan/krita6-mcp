@@ -20,7 +20,7 @@ Run `uv run krita6-mcp doctor --json` from the checkout to read connection state
 
 ## Editing and retries
 
-Before editing, list documents and inspect the target. The catalog has 13 core tools and three optional AI Diffusion readers; the [bridge contract](bridge-contract.md) documents the commands.
+Before editing, list documents and inspect the target. The catalog has 13 core tools and eight optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
 
 Native painting requires an active document view, an unlocked nonanimated paint layer, no selection, zero canvas offset, and RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc`. The supported engine is the pixel brush engine. Paths do not support arbitrary per-point pressure; lines accept endpoint pressure. There is no arbitrary Python/action-execution tool or MCP undo tool. Ordinary Krita undo is available for native strokes. See [validation evidence](validation.md) for the exact tested build and preset.
 
@@ -39,12 +39,24 @@ Use `root="art"` and a relative `path`, such as `sketch.kra` or `preview.png`, i
 
 ## Krita AI Diffusion
 
-With a compatible plugin already enabled in Krita, use:
+Enable the [supported Qt6 add-on revision](diffusion-integration.md#source-boundary), connect its local server in Krita, and open the AI Diffusion docker for the target document. Check `krita_diffusion_status`: generation requires `generation_control: true`.
 
-- `krita_diffusion_status` for loaded/compatible state, observed connection state, and counts.
-- `krita_inspect_diffusion_document` for an existing document model's prompts, style, strength, batch count, and progress.
-- `krita_list_diffusion_jobs` for paginated job IDs, kinds, raw upstream states, and result counts.
+Use `krita_inspect_diffusion_document` to inspect prompts, selection, regional prompts, and control/reference layers. Configure selections, regions, and controls in the add-on; generation inherits them. Use `krita_list_diffusion_styles` to choose a style, or omit `style_id` to use the current one.
 
-These tools do not load plugins, create diffusion models, connect backends, change settings, generate images, cancel jobs, or select/apply results. The core tools work when AI Diffusion is absent; its status reports `not_loaded`. Core painting tools can edit supported paint layers produced by AI Diffusion.
+Example MCP tool arguments (replace the illustrative handles):
 
-Job IDs can be null, and pagination indices are positions in the current snapshot. Upstream `cancelled` can include failures. Compatibility is tied to a tested Qt6 development revision, not just a version string. See the [pinned integration record](diffusion-integration.md) and [testing guide](testing.md) for details.
+```text
+krita_generate_diffusion(
+  instance_id="instance-…", document_id="doc-…", operation_id="tree-001",
+  positive_prompt="A watercolor oak tree in a sunny meadow",
+  negative_prompt="text, watermark", strength=1.0, seed=42
+)
+```
+
+Poll `krita_get_diffusion_generation` with that document and `generation_id="tree-001"` until it reports finished results. Inspect one with `krita_get_diffusion_result`, then call `krita_apply_diffusion_result` with its `result_id` and a new operation ID such as `tree-apply-001`. Application creates a new top paint layer. Repeating either mutation with the original ID and arguments does not submit/apply twice.
+
+Strength below 1 refines the current canvas; an existing selection uses the add-on’s inpainting/refinement preparation. Generation requests one image and suppresses automatic canvas application, but the add-on still updates its job history and document annotations. Image handles expire if that history is removed.
+
+`krita_list_diffusion_jobs` shows all current add-on jobs; only bridge-owned generations have retrievable/applicable MCP result handles. There is no backend cancellation tool. Cancelling a bridge submission after it has run does not stop rendering. No tool installs plugins, creates diffusion models, or connects backends. Core tools work when AI Diffusion is absent.
+
+See [integration behavior and limits](diffusion-integration.md) and the [testing guide](testing.md).

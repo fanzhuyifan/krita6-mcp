@@ -42,7 +42,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             if request is None:
                 continue
             dispatched.append(request)
-            if request["command"] == "get_preview":
+            if request["command"] in {"get_preview", "get_diffusion_result"}:
                 result = {**artifacts.put(PNG), "preview_width": 1, "preview_height": 1}
                 effect = "none"
             elif request["command"] == "create_document":
@@ -62,6 +62,12 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
                     "next_offset": None,
                 }
                 effect = "none"
+            elif request["command"] == "generate_diffusion":
+                result = {"generation_id": request["operation_id"], "state": "submitting"}
+                effect = "applied"
+            elif request["command"] == "apply_diffusion_result":
+                result = {"new_node_ids": ["result-layer"]}
+                effect = "applied"
             else:
                 result = {"documents": []}
                 effect = "none"
@@ -79,18 +85,27 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             listed = await client.list_tools()
             tools = listed.tools if hasattr(listed, "tools") else listed
             by_name = {tool.name: tool for tool in tools}
-            assert len(by_name) == 16
+            assert len(by_name) == 21
             assert by_name["krita_status"].annotations.read_only_hint
             diffusion_tools = {
                 "krita_diffusion_status",
                 "krita_inspect_diffusion_document",
                 "krita_list_diffusion_jobs",
+                "krita_list_diffusion_styles",
+                "krita_get_diffusion_generation",
+                "krita_get_diffusion_result",
             }
-            assert {name for name in by_name if "diffusion" in name} == diffusion_tools
+            diffusion_mutations = {"krita_generate_diffusion", "krita_apply_diffusion_result"}
+            assert {name for name in by_name if "diffusion" in name} == (
+                diffusion_tools | diffusion_mutations
+            )
             for name in diffusion_tools:
                 assert by_name[name].annotations.read_only_hint
                 assert not by_name[name].annotations.destructive_hint
                 assert "operation_id" not in by_name[name].input_schema["properties"]
+            for name in diffusion_mutations:
+                assert not by_name[name].annotations.read_only_hint
+                assert "operation_id" in by_name[name].input_schema["required"]
             assert "operation_id" in by_name["krita_paint_path"].input_schema["required"]
             assert "pressure" not in by_name["krita_paint_path"].input_schema["properties"]
             status = await client.call_tool("krita_status", {})
@@ -169,6 +184,59 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             assert not retrieved_preview.is_error
             assert retrieved_preview.structured_content == preview.structured_content
             assert retrieved_preview.content == preview.content
+            generation_args = {
+                "instance_id": "integration",
+                "document_id": "scratch",
+                "operation_id": "generate-once",
+                "positive_prompt": "A green tree",
+            }
+            generated = await client.call_tool("krita_generate_diffusion", generation_args)
+            repeated = await client.call_tool("krita_generate_diffusion", generation_args)
+            assert (
+                not generated.is_error
+                and repeated.structured_content == generated.structured_content
+            )
+            assert generated.structured_content["result"]["generation_id"] == "generate-once"
+            conflicting = await client.call_tool(
+                "krita_generate_diffusion", {**generation_args, "seed": 5}
+            )
+            assert conflicting.is_error
+            assert conflicting.structured_content["error"]["code"] == "OPERATION_ID_CONFLICT"
+            result_args = {
+                "instance_id": "integration",
+                "document_id": "scratch",
+                "generation_id": "generate-once",
+                "result_id": "result-one",
+            }
+            generated_preview = await client.call_tool("krita_get_diffusion_result", result_args)
+            assert not generated_preview.is_error
+            assert [item for item in generated_preview.content if item.type == "image"]
+            polled = await client.call_tool(
+                "krita_get_operation",
+                {
+                    "instance_id": "integration",
+                    "operation_id": generated_preview.structured_content["operation_id"],
+                },
+            )
+            assert polled.content == generated_preview.content
+            applied = await client.call_tool(
+                "krita_apply_diffusion_result",
+                {
+                    **result_args,
+                    "operation_id": "apply-once",
+                },
+            )
+            repeated_apply = await client.call_tool(
+                "krita_apply_diffusion_result",
+                {
+                    **result_args,
+                    "operation_id": "apply-once",
+                },
+            )
+            assert (
+                not applied.is_error
+                and repeated_apply.structured_content == applied.structured_content
+            )
             invalid = await client.call_tool(
                 "krita_create_document", {**params, "operation_id": "bad-number", "width": True}
             )
@@ -180,7 +248,12 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
     try:
         asyncio.run(scenario())
         assert len([item for item in dispatched if item["command"] == "create_document"]) == 1
-        diffusion_reads = [item for item in dispatched if "diffusion" in item["command"]]
+        diffusion_reads = [
+            item
+            for item in dispatched
+            if item["command"]
+            in {"diffusion_status", "inspect_diffusion_document", "list_diffusion_jobs"}
+        ]
         assert [item["command"] for item in diffusion_reads] == [
             "diffusion_status",
             "inspect_diffusion_document",
@@ -191,7 +264,11 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
         assert diffusion_reads[1]["target"] == {"document_id": "scratch"}
         assert diffusion_reads[2]["params"] == {"offset": 0, "limit": 50}
         assert diffusion_reads[3]["params"] == {"offset": 12, "limit": 10}
-        assert ledger.status()["mutations"] == 1
+        assert len([item for item in dispatched if item["command"] == "generate_diffusion"]) == 1
+        assert (
+            len([item for item in dispatched if item["command"] == "apply_diffusion_result"]) == 1
+        )
+        assert ledger.status()["mutations"] == 3
     finally:
         stop.set()
         thread.join(timeout=2)

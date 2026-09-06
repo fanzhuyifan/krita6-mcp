@@ -101,6 +101,69 @@ def test_pending_closed_document_reports_unknown_effect(host_modules):
     assert error.value.effect == "unknown"
 
 
+def test_diffusion_read_results_report_current_generation_availability(host_modules):
+    host_module, _ = host_modules
+    host = host_module.KritaHost.__new__(host_module.KritaHost)
+    host._document = lambda identifier: object()
+    host._diffusion = types.SimpleNamespace(
+        status=lambda: {"generation_control": False},
+        inspect_document=lambda *args: {"generation_control": False, "document_status": "tracked"},
+        list_jobs=lambda *args: {"generation_control": False, "jobs": []},
+    )
+    host._diffusion_generator = types.SimpleNamespace(
+        capabilities=lambda: {"generation_control": True, "read_only": False}
+    )
+    for read in (
+        host._diffusion_status,
+        host._inspect_diffusion_document,
+        host._list_diffusion_jobs,
+    ):
+        assert read({"document_id": "doc-one"}, {})["generation_control"] is True
+
+
+@pytest.mark.parametrize("command", ["generate", "apply_result"])
+@pytest.mark.parametrize("effect", ["none", "partial", "unknown"])
+def test_diffusion_native_errors_keep_gate_after_possible_canvas_work(
+    host_modules, command, effect
+):
+    host_module, _ = host_modules
+    document = types.SimpleNamespace(ready=False, rootNode=lambda: None)
+    host = host_module.KritaHost.__new__(host_module.KritaHost)
+    host._assert_gui_thread = lambda: None
+    host._diffusion_target = host._document = lambda handle: document
+    host._require_layer_capacity = host._unlocked_ancestry = lambda value: None
+    host._is_ready = lambda value: value.ready
+
+    def fail(*args):
+        raise BridgeError("DIFFUSION_TEST_ERROR", "Injected failure", effect)
+
+    host._diffusion_generator = types.SimpleNamespace(**{command: fail})
+    target = {"document_id": "doc-one"}
+
+    def dispatch():
+        if command == "generate":
+            return host._generate_diffusion(target, {"positive_prompt": "Tree"}, "generate-one")
+        return host._apply_diffusion_result(
+            target,
+            {
+                "generation_id": "generate-one",
+                "result_id": "result-one",
+            },
+        )
+
+    if effect == "none" and command == "apply_result":
+        with pytest.raises(BridgeError):
+            dispatch()
+    else:
+        pending = dispatch()
+        assert isinstance(pending, host_module.Pending)
+        assert pending.poll() is None
+        document.ready = True
+        with pytest.raises(BridgeError) as error:
+            pending.poll()
+        assert error.value.effect == effect
+
+
 @pytest.mark.parametrize("result", [{"wrapper": object()}, {"large": "x" * (1024 * 1024)}])
 def test_executor_records_invalid_result_instead_of_stranding_operation(host_modules, result):
     _, executor_module = host_modules

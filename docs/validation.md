@@ -34,7 +34,7 @@ The probe also found that `Document.projection()` with omitted bounds returns a 
 
 `tools/smoke_krita.py` loads the production plugin in another disposable profile and drives the external adapter through real MCP stdio. The [retained report](validation/mcp-linux-krita-6.0.3.json) records:
 
-- All 16 tools are advertised, including the three optional diffusion readers.
+- All 21 tools are advertised, including the eight optional diffusion tools.
 - With AI Diffusion absent, its status returns `not_loaded` and the core workflow still succeeds.
 - Retrying document creation with the same operation ID creates only one document.
 - A paint layer, red native path, and blue pressure line are created through the bridge.
@@ -48,17 +48,39 @@ The image was visually checked against the exported PNG. Its SHA-256 is retained
 
 ## AI Diffusion readers
 
-`tools/probe_diffusion.py` passes with the actual PyQt6 development plugin at upstream commit `dda58d1c63e361207ccec085efbc34dbd32f1654`, on the same Linux/Krita 6.0.3 runtime. The [retained report](validation/diffusion-linux-krita-6.0.3.json) records host versions and fingerprints for the seven upstream files defining the integration boundary. Its websockets dependency came from the official v1.53.0 ZIP; that archive's SHA-256 is also recorded. Upstream source/dependencies and the disposable profile are excluded from this repository.
+`tools/probe_diffusion.py` passes with the actual PyQt6 development plugin at upstream commit `dda58d1c63e361207ccec085efbc34dbd32f1654`, on the same Linux/Krita 6.0.3 runtime. The [retained report](validation/diffusion-linux-krita-6.0.3.json) records host versions and fingerprints for the seven upstream files defining the integration boundary. The latest rerun used the installed Arch Qt6 package `1.53.0.r6.gdda58d1-1`, including its bundled dependencies. Upstream source/dependencies and the disposable profile are excluded from this repository.
 
 All three reader tools were exercised over real MCP stdio. They detected the loaded plugin in `auth_missing` state without a backend client, inspected the scratch model's expected prompts/strength/batch count, and paginated the real upstream `JobQueue`. A test-only plugin inserted four **synthetic** records to cover `queued`, `executing`, `finished`, and `cancelled`, including a null job ID. No images were generated and synthetic finished jobs have no results.
 
 The fixture verifies that reads preserve pixels, filename, modified state, tracked-model count, job IDs/states/result counts, job selection, root prompts, strength, batch count, style name, top-level layer IDs/names, connection state, and absence of a backend client. These specific checks do not prove preservation of every possible plugin field or real-generation behavior. Fake-object tests separately cover missing models, incompatible modules/Qt, stale matching, bounds, secret omission, and prohibited side effects.
 
-The latest stable AI Diffusion release inspected, v1.53.0, targets Krita 5. The tested **unreleased** Qt6 source still reports 1.53.0, so compatibility is tied to the pinned source and runtime interfaces, not that version string. The reader never activates the plugin, creates its document models, connects a backend, or selects previews. See the [source findings and remaining generation gates](diffusion-integration.md).
+The latest stable AI Diffusion release inspected, v1.53.0, targets Krita 5. The tested **unreleased** Qt6 source still reports 1.53.0, so compatibility is tied to the pinned source and runtime interfaces, not that version string. The reader never activates the plugin, creates its document models, connects a backend, or selects previews. See the [integration source boundary and policies](diffusion-integration.md).
+
+## AI Diffusion generation
+
+`tools/probe_diffusion_generation.py` passes through real MCP stdio, the production bridge, the installed Qt6 add-on, and a scratch ComfyUI server using existing local model weights. The [sanitized report](validation/diffusion-generation-linux-krita-6.0.3.json) records these results. The normal Krita profile and server configuration were not used.
+
+| Component | Tested configuration |
+| --- | --- |
+| Add-on | Arch `1.53.0.r6.gdda58d1-1`, pinned Qt6 source above |
+| Backend | ComfyUI 0.33.3, PyTorch 2.13.0+cu130, Python 3.12.14 |
+| GPU | NVIDIA RTX 4060 Laptop, 8 GiB |
+| Style/model | Shipped Digital Artwork (SD1.5), `dreamshaper_8.safetensors` |
+| Canvas | 512 × 512 RGBA/U8/standard sRGB scratch document |
+
+The probe covers full image generation and selection refinement at strength 0.65. The latter uses a 192 × 192 selection; the add-on expands its context to a 288 × 288 masked result at the captured bounds. Both runs verify:
+
+- Repeated submission creates one add-on job and one image despite a configured batch count of two.
+- Generation and image inspection preserve the canvas pixels/layers, selection, and checked prompt/style/seed/strength/batch settings, even with the add-on’s automatic finish action set to apply.
+- A generated PNG reaches the MCP client. Explicit application creates one new top layer; repeating the application ID adds no duplicate.
+- After native completion, one ordinary Krita undo restores the exact pre-application pixels and layer IDs; redo restores the exact applied state on this fixture.
+- Selection refinement preserves a checked 64 × 64 far-corner patch outside the generated area. The add-on’s mask expansion/feathering means the original selection rectangle is not a hard output boundary.
+
+This establishes the workflow on the stated model/build. Existing regional prompts and control/reference layers are passed through the add-on’s preparation and exposed by inspection, but their combinations have not yet received equivalent live generation coverage. Full color-profile conversion, larger models/documents, backend disconnect races, and long-session history pruning need further live tests. Source-gate, ownership, pruning, and error behavior also have separate unit coverage. No backend cancellation or cloud generation is exposed.
 
 ## Automated coverage
 
-**164 pytest tests pass on CPython 3.11.16**, using dependencies installed from `uv.lock`. CI runs the suite on Python 3.10, 3.12, and 3.14; the earlier 143-case suite also passed locally on CPython 3.10.21, 3.12.14, and 3.14.7. The suite covers strict schemas, authentication and discovery permissions, bounded HTTP workers and deadlines, queue admission, at-most-once mutation dispatch, cancellation, result expiry and byte limits, retained identities, fake-host guards, and MCP error/image results. Real stdio integration runs in both SDK `auto` and `legacy` client modes. Twenty-three host guards cover native completion/lifecycle limits; 18 filesystem/configuration cases run without Qt or Krita; 17 diffusion-reader tests cover compatibility and prohibited side effects. Client tests include truncated/stalled/malformed HTTP error responses, and preview checks cover equivalent immediate/polled images and retrieval failures. These tests establish protocol behavior independently of Krita; native and upstream integration claims come from the separate live probes above. Ruff checks and package builds also pass.
+**245 pytest tests pass on CPython 3.11.16**, using dependencies installed from `uv.lock`. CI runs the suite on Python 3.10, 3.12, and 3.14. Coverage includes strict schemas, authenticated transport, operation identity/cancellation/expiry, bounded results, native completion guards, and real MCP stdio in SDK `auto` and `legacy` modes. The 24 diffusion-reader cases cover bounded canvas metadata and prohibited read side effects; 43 generation cases cover source/backend gates, one-job submission, restored settings/visibility, scoped automatic-apply suppression, stable weak image handles, pruning/reordering, context changes, and uncertain native outcomes. Thirty host guards cover lifecycle/barrier behavior and consistent capability reporting. These tests establish protocol and adapter behavior; native/upstream compatibility comes from the separate live probes. Ruff, wheel/sdist/ZIP builds, and the real importer check also pass.
 
 The release-preparation review found that Krita's ZIP importer requires an explicit module-directory entry. The builder now includes that entry, the MIT license, and the manual, with a packaging regression test. `tools/probe_plugin_import.py` successfully imported the generated archive through Krita's installed importer into a temporary resource directory and verified the installed source/license/manual. The importer check executes its real filesystem logic with only its translation function supplied; it does not establish native painting behavior or touch a personal Krita profile.
 
@@ -71,7 +93,7 @@ Run the verification commands in the [testing guide](testing.md). The live harne
 - Linux/Krita 6.0.3 is the only tested platform/build. Windows discovery fails explicitly until private ACL handling exists; macOS has not been validated.
 - Other engines, arbitrary profiles, nonzero offsets, selections, animation, and per-point path pressure are outside the supported painting path. Preview output-profile/alpha conversion follows Krita's thumbnail API and is explicitly unspecified; this is not archival color validation.
 - Busy-image, tab-close, modal, repeated stop/start, and simultaneous-instance races need broader **live** stress coverage. Fake-host checks cannot establish all native lifetime behavior.
-- No current-session self-test runs automatically. AI Diffusion observation is verified on the pinned development source; generation, cancellation, and result application are not implemented or tested. No generation backend is configured.
+- No current-session self-test runs automatically. AI Diffusion generation/application is verified only on the pinned source and local backend/model above. Backend cancellation, cloud/remote backends, and live/custom/edit-model workflows are outside this implementation.
 - The bridge cannot forcibly interrupt a running native stroke or guarantee a hard deadline for synchronous Krita calls. It retains the execution gate while awaiting native completion.
 - File checks do not provide race-proof filesystem isolation from another process running as the same user. At-most-once dispatch applies within a live plugin instance, not across a Krita crash.
 - Layer creation has no promised undo grouping. The implementation provides native stroke undo metadata but no MCP undo tool. Per-tool output schemas and automatic plugin installation remain future work.

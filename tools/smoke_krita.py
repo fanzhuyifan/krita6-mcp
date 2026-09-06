@@ -59,7 +59,7 @@ async def scenario(base, instance_id):
         listed = await client.list_tools()
         tools = listed.tools if hasattr(listed, "tools") else listed
         checks["tool_count"] = len(tools)
-        assert len(tools) == 16
+        assert len(tools) == 21
         _, diffusion = await call("krita_diffusion_status")
         assert diffusion["availability"] == "not_loaded"
         assert diffusion["generation_control"] is False

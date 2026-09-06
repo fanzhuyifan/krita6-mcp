@@ -13,6 +13,8 @@ MUTATIONS = frozenset(
         "paint_line",
         "save_document",
         "export_png",
+        "generate_diffusion",
+        "apply_diffusion_result",
     }
 )
 COMMANDS = MUTATIONS | {
@@ -23,6 +25,9 @@ COMMANDS = MUTATIONS | {
     "diffusion_status",
     "inspect_diffusion_document",
     "list_diffusion_jobs",
+    "list_diffusion_styles",
+    "get_diffusion_generation",
+    "get_diffusion_result",
 }
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
@@ -128,6 +133,10 @@ def validate_request(body, instance_id):
             "export_png",
             "inspect_diffusion_document",
             "list_diffusion_jobs",
+            "generate_diffusion",
+            "get_diffusion_generation",
+            "get_diffusion_result",
+            "apply_diffusion_result",
         }
         else set()
     )
@@ -140,6 +149,7 @@ def validate_request(body, instance_id):
         "inspect_document",
         "diffusion_status",
         "inspect_diffusion_document",
+        "list_diffusion_styles",
     }:
         p = _object(p, set())
     elif c == "get_preview":
@@ -154,6 +164,28 @@ def validate_request(body, instance_id):
         p = _object(p, {"offset", "limit"})
         p["offset"] = _integer(p.get("offset", 0), 0, 2**31 - 1, "offset")
         p["limit"] = _integer(p.get("limit", 50), 1, 100, "limit")
+    elif c == "generate_diffusion":
+        p = _object(
+            p,
+            {"positive_prompt", "negative_prompt", "strength", "seed", "style_id"},
+            {"positive_prompt"},
+        )
+        p["positive_prompt"] = _string(p["positive_prompt"], 1, 4096, "positive_prompt")
+        p["negative_prompt"] = _string(p.get("negative_prompt", ""), 0, 4096, "negative_prompt")
+        p["strength"] = _number(p.get("strength", 1), 0.01, 1, "strength")
+        p["seed"] = _integer(p.get("seed", 0), 0, 2**32 - 1, "seed")
+        if "style_id" in p:
+            validate_id(p["style_id"], "style_id")
+    elif c in {"get_diffusion_generation", "get_diffusion_result", "apply_diffusion_result"}:
+        required = {"generation_id"}
+        if c != "get_diffusion_generation":
+            required.add("result_id")
+        allowed = required | ({"max_edge"} if c == "get_diffusion_result" else set())
+        p = _object(p, allowed, required)
+        for field in required:
+            validate_id(p[field], field)
+        if c == "get_diffusion_result":
+            p["max_edge"] = _integer(p.get("max_edge", 1024), 32, 1024, "max_edge")
     elif c == "create_document":
         fields = {"width", "height", "name"}
         p = _object(p, fields, fields)
@@ -186,7 +218,7 @@ def validate_request(body, instance_id):
             p["start"], p["end"] = _point(p["start"], True), _point(p["end"], True)
             for k in pressure:
                 p[k] = _number(p.get(k, 1), 0, 1, k)
-    else:
+    elif c in {"save_document", "export_png"}:
         p = _object(p, {"root", "path", "overwrite"}, {"root", "path"})
         validate_id(p["root"], "root")
         p["path"] = _string(p["path"], 1, 4096, "path")
