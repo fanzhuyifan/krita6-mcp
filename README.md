@@ -101,20 +101,22 @@ Tests use local loopback sockets, so the runner needs local-network permission. 
 
 CI runs the non-GUI suite and distribution builds on Python 3.10, 3.12, and 3.14. It does not run Krita or establish native-host support. See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture, review expectations, and test selection.
 
-On Linux, the live checks require `krita`, `Xvfb`/`xvfb-run`, `xauth`, and `dbus-run-session`:
+On Linux, the live checks require `krita`, `Xvfb`/`xvfb-run`, `xauth`, and `dbus-run-session`. Run them from a shell without an activated Python environment. Invoke the checkout's Python directly: `uv run` prepends its environment to `PATH`, which can cause Krita's embedded Python to use that environment and fail to find the system PyQt6 bindings.
 
 ```bash
-uv run python tools/probe_krita.py
-uv run python tools/smoke_krita.py
-uv run python tools/probe_plugin_import.py
+.venv/bin/python tools/probe_krita.py
+.venv/bin/python tools/smoke_krita.py
+.venv/bin/python tools/probe_plugin_import.py
 ```
 
 The first two create disposable profiles, a virtual X display, and a private temporary socket directory. They do not install into the normal Krita profile. The first checks native pixels, resource capture, undo/redo, preview state, and `.kra` round-trip. The second drives the production plugin through real MCP stdio. Each prints the location of its report and test artwork. `--output` selects a new artifact directory; keep reports/logs outside Git unless deliberately sanitized for validation evidence. The third uses Krita's installed importer to extract the ZIP into a temporary directory; pass `--importer` if that module is installed at a different path.
 
+For a system Krita build, clear inherited KDE development overrides such as `PYTHONPATH`, `LD_LIBRARY_PATH`, and `QT_PLUGIN_PATH` if they point to another build; pass `--krita /usr/bin/krita` to select the installed binary explicitly.
+
 For the optional diffusion reader, use a checkout of the exact development commit above, including its `ai_diffusion/websockets` submodule:
 
 ```bash
-uv run python tools/probe_diffusion.py --source /absolute/path/to/pinned/krita-ai-diffusion
+.venv/bin/python tools/probe_diffusion.py --source /absolute/path/to/pinned/krita-ai-diffusion
 ```
 
 The probe verifies source fingerprints, loads the real plugin in an isolated profile, and inserts synthetic job records into its actual queue for inspection. Automatic updates are disabled and cloud mode has an empty token, which the pinned plugin handles without creating a backend client. No images are generated. This test proves observation behavior, not generation or backend compatibility.

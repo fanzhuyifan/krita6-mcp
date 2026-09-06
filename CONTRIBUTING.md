@@ -38,8 +38,8 @@ Keep commands typed, bounded, and explicit about their document/layer targets. D
 Native painting, completion, undo, color handling, and optional plugin compatibility require live-host evidence. Use the isolated Linux harnesses described in the [README](README.md#development-and-verification):
 
 ```bash
-uv run python tools/probe_krita.py
-uv run python tools/smoke_krita.py
+.venv/bin/python tools/probe_krita.py
+.venv/bin/python tools/smoke_krita.py
 ```
 
 They isolate XDG profiles and `TMPDIR`, create a private display/session, and use scratch documents. Never run host tests against personal artwork or a normal Krita profile. For AI Diffusion observation changes, follow the pinned-source procedure in the README and run `tools/probe_diffusion.py`; its synthetic jobs do not establish backend generation support.

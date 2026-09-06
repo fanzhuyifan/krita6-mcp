@@ -22,6 +22,12 @@ Changes are recorded here before release. Version 0.1.0 is currently unreleased.
 - Interrupted or malformed HTTP error responses retain structured uncertainty and reconciliation information.
 - Plugin ZIPs include the explicit directory entry required by Krita's importer, plus the license and manual.
 
+### Changed
+
+- Shared preview-image retrieval between immediate and polled MCP responses, preserving metadata and retrieval errors.
+- Removed unused automatic instance selection and redundant command validation in the HTTP route; the ledger still validates before admission.
+- Moved output-root configuration and path checks into a standard-library module with direct tests, and removed a redundant host dispatch branch.
+
 ### Known limits
 
 - Alpha status; live-host evidence covers Linux/Krita 6.0.3 and one pixel-brush preset on small fixtures.
