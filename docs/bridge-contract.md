@@ -18,6 +18,9 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | --- | --- | --- |
 | list_documents | empty | empty |
 | inspect_document | document_id | empty |
+| diffusion_status | empty | empty |
+| inspect_diffusion_document | document_id | empty |
+| list_diffusion_jobs | document_id | offset: int=0 (0..2147483647), limit: int=50 (1..100) |
 | get_preview | document_id | max_edge: int=1024 (32..1024) |
 | list_brush_presets | empty | query: str="" (0..256 characters), offset: int=0 (0..2147483647), limit: int=50 (1..100) |
 | create_document | empty | width,height: int (1..8192, product <=16777216), name: str (1..128 characters) |
@@ -27,7 +30,7 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | save_document | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 | export_png | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 
-There are exactly six mutations: `create_document`, `create_paint_layer`, `paint_path`, `paint_line`, `save_document` and `export_png`. The other four commands are reads. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
+There are exactly six mutations: `create_document`, `create_paint_layer`, `paint_path`, `paint_line`, `save_document` and `export_png`. The other seven commands are reads. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
 
 ## Operation ledger
 
@@ -89,3 +92,11 @@ Save uses `saveAs` for a relative `.kra` destination; export uses `exportImage` 
 Capability metadata identifies Linux/Krita 6.0.3 as the verified reference workflow and reports `session_self_test: false`. Settings restoration is immediate without a GUI yield; native undo is described as one stroke on the reference build. Preview profile conversion remains unspecified. See [retained evidence and limits](validation.md). Tests invoke fixed Undo/Redo internally in an isolated profile; there is no public undo tool.
 
 Failures after native dispatch, including restoration failures, retain a `Pending` barrier carrying the eventual error until the document settles or closes. Draining uses the same gate. After shutdown or partial startup, the extension explicitly disposes the GUI executor, disconnects its timer, clears host/ledger references, and schedules Qt deletion, avoiding retention across repeated bridge sessions.
+
+## Optional diffusion reads
+
+`DiffusionReader` observes only loaded `ai_diffusion` modules. Its methods execute on the GUI thread and return plain data. The three read commands never import the plugin, create a document model, connect a backend, submit/cancel a job, or select/apply a result. `availability` is `not_loaded`, `not_initialized`, `incompatible`, or `available`. Status includes the reported plugin version, observed connection enum, error-presence boolean, available checkpoint count (null when disconnected), tracked document count, and `backend_health_check: false`. No server URLs, credentials, account details, raw errors, or diagnostic dumps are returned.
+
+Document reads match the explicit native target against existing upstream model wrappers. `document_status` is `tracked` or `model_not_created`; the latter does not initialize anything. A tracked model exposes generation-root prompts (each at most 4096 characters), style label (128), strength, batch count, model-level progress/kind, and error category. Truncated fields are named. Unknown shapes/enums fail closed as incompatible. At most 128 tracked models and 10000 queued/history jobs are inspected.
+
+Job pages contain snapshot_index, nullable job_id, kind, raw upstream state, and result_count, with total/offset/next_offset. IDs belong to the upstream plugin; indices are not durable handles. `cancelled` can include failures, and history may change between pages. There are no diffusion mutation tools. Capability metadata points to the exact tested development revision and explicitly denies current-session self-testing. See [source contract and future control gates](diffusion-integration.md).

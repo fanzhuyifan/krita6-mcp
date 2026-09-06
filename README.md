@@ -13,10 +13,23 @@ The system has two parts: an external Python MCP server and a PyQt6 plugin insid
 - Return a bounded inline PNG so the assistant can inspect its work.
 - Save layered `.kra` files and export separate PNG files under configured output directories.
 - Reconcile, deduplicate, and cancel requests with explicit operation IDs.
+- Inspect an already loaded Krita AI Diffusion plugin, its document settings, and its job queue.
 
 Native painting currently requires an active document view, an unlocked nonanimated paint layer, no selection, zero canvas offset, and RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc`. The initial supported brush engine is the pixel brush engine. Paths do not support arbitrary per-point pressure. There is no arbitrary Python or action-execution tool, and no MCP undo tool; ordinary Krita undo is available for native strokes.
 
-The bridge can inspect and edit layers produced by Krita AI Diffusion through Krita's normal API. It does not yet control diffusion generation, prompts, settings, or jobs. An [optional integration](docs/design.md#optional-krita-ai-diffusion-integration) is documented for future work.
+The MCP catalog has 16 tools: 13 core tools and three optional AI Diffusion readers. It can inspect and edit layers produced by AI Diffusion through Krita's normal API. Direct diffusion generation, settings changes, job cancellation, and result application remain future work.
+
+## Krita AI Diffusion
+
+With a compatible AI Diffusion plugin already enabled in Krita, use:
+
+- `krita_diffusion_status`: loaded/compatible state, observed connection state, and counts.
+- `krita_inspect_diffusion_document`: an existing document model's prompts, style, strength, batch count, and progress.
+- `krita_list_diffusion_jobs`: paginated job IDs, kinds, raw upstream states, and result counts.
+
+These calls do not load the plugin, create a diffusion model, connect to a backend, or change a job/preview selection. The core tools work when AI Diffusion is absent; the status tool reports `not_loaded`. Job IDs can be null, and pagination indices are only positions in the current snapshot. Upstream `cancelled` can include failures.
+
+**Compatibility as of 2026-09-06:** AI Diffusion's stable v1.53.0 targets Krita 5. The tested Krita 6 source is development commit `dda58d1c63e361207ccec085efbc34dbd32f1654`, which also reports version 1.53.0. The adapter checks loaded Qt6 objects and read interfaces; the version string alone is insufficient. See the [pinned integration record](docs/diffusion-integration.md) and [live evidence](docs/validation.md#ai-diffusion-readers). The test installation uses a disposable profile and does not install AI Diffusion into your normal Krita profile.
 
 ## Install from this checkout
 
@@ -88,6 +101,14 @@ uv run python tools/smoke_krita.py
 ```
 
 Both create disposable profiles, a virtual X display, and a private temporary socket directory. They do not install into the normal Krita profile. The first checks native pixels, resource capture, undo/redo, preview state, and `.kra` round-trip. The second drives the production plugin through real MCP stdio. Each prints the location of its report and test artwork. `--output` selects a new artifact directory; keep reports/logs outside Git unless deliberately sanitized for validation evidence.
+
+For the optional diffusion reader, use a checkout of the exact development commit above, including its `ai_diffusion/websockets` submodule:
+
+```bash
+uv run python tools/probe_diffusion.py --source /absolute/path/to/pinned/krita-ai-diffusion
+```
+
+The probe verifies source fingerprints, loads the real plugin in an isolated profile, and inserts synthetic job records into its actual queue for inspection. Automatic updates are disabled and cloud mode has an empty token, which the pinned plugin handles without creating a backend client. No images are generated. This test proves observation behavior, not generation or backend compatibility.
 
 ## Project notes
 

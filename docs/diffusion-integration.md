@@ -4,7 +4,7 @@ Source decision record · 2026-09-06
 
 ## Scope and upstream baseline
 
-The next increment adds optional, read-only observation of an already loaded [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion) plugin. It reports connection state, settings of an existing document model, and bounded job snapshots. The core bridge continues to work when AI Diffusion is absent. It does not install or initialize AI Diffusion, connect a backend, submit generation, cancel jobs, select previews, or apply results.
+The implemented adapter provides optional, read-only observation of an already loaded [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion) plugin. It reports connection state, settings of an existing document model, and bounded job snapshots. The core bridge continues to work when AI Diffusion is absent. It does not install or initialize AI Diffusion, connect a backend, submit generation, cancel jobs, select previews, or apply results.
 
 Source inspection used a local archive of commit [`dda58d1c63e361207ccec085efbc34dbd32f1654`](https://github.com/Acly/krita-ai-diffusion/commit/dda58d1c63e361207ccec085efbc34dbd32f1654), the Qt6 migration merge from [PR #2491](https://github.com/Acly/krita-ai-diffusion/pull/2491). This is a development source baseline, not a released Krita 6 package. The latest stable release found during this investigation, [v1.53.0](https://github.com/Acly/krita-ai-diffusion/releases/tag/v1.53.0), explicitly targets Krita 5. Its release commit is `0217cd2197fcadbd70d7e63af25e29cc21cb7c8b`.
 

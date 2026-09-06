@@ -150,7 +150,7 @@ File tools use configured input/output roots, canonical containment checks, boun
 
 ## Initial MCP surface
 
-Use individually typed tools rather than an unbounded `execute(command, args)` tool. The following 13 tools are implemented. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
+Use individually typed tools rather than an unbounded `execute(command, args)` tool. The following 13 core tools and three optional diffusion readers are implemented, for 16 total. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
 
 | Tool | Contract |
 | --- | --- |
@@ -167,6 +167,9 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 | `krita_export_png` | Separate PNG export with explicit overwrite intent |
 | `krita_get_operation` | Reconcile a running, timed-out, or duplicate operation |
 | `krita_cancel_operation` | Best-effort cancellation with a precise result |
+| `krita_diffusion_status` | Observe an already loaded AI Diffusion plugin and its connection state |
+| `krita_inspect_diffusion_document` | Read an existing document model's bounded settings and progress |
+| `krita_list_diffusion_jobs` | Paginated job state, nullable plugin IDs, and result counts |
 
 Add file opening and simple layer-property tools in the next increment after their modal/error/undo behavior is verified. A static capability resource can complement these tools, but clients should not require resource subscriptions to perform the basic workflow.
 
@@ -182,6 +185,6 @@ Provide `krita6-mcp doctor` for discovery and version diagnostics and an explici
 
 ## Optional Krita AI Diffusion integration
 
-The current bridge sees documents and layers created by other plugins through Krita's normal API. It does not control generation, prompts, models, or jobs in [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion). Its current upstream bootstrap explicitly targets Krita 6 ([source](https://github.com/Acly/krita-ai-diffusion/blob/main/ai_diffusion/__init__.py)); this alone does not establish an automation API.
+The bridge now has three read-only tools for [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion). It reads already loaded Qt6 objects on the GUI thread without creating models, connecting a backend, or selecting previews. The [integration record](diffusion-integration.md) pins the actual Krita 6 development source and documents the private interfaces used. Stable v1.53.0 targets Krita 5; the development Qt6 code still reports that same version. Version strings alone do not establish compatibility.
 
-A future optional adapter should detect a supported AI Diffusion version and expose explicit status, generation, job lookup/cancellation, and result-application tools. Probe capabilities on the GUI thread, bind each job to an explicit document, and keep generation completion separate from applying pixels to a layer. Preserve diffusion job IDs across retries and require an explicit backend choice before any cloud submission. Investigate a maintained integration API before coupling to private plugin internals. The core bridge must remain usable without AI Diffusion installed. No diffusion integration or generation test is included in 0.1.0.
+Generation, cancellation, and application remain a separate increment. Bind each job to an explicit document and bridge operation, preserve identities across retries, and distinguish local admission from backend dispatch and document application. Upstream cancellation can affect unrelated work, and completion follows ambient automatic-application settings; these require explicit policy and live backend evidence. An explicit backend choice is required before any cloud submission. The core bridge remains usable without AI Diffusion installed. Reference tests establish observation of the real plugin and synthetic job records; no image generation has been tested.
