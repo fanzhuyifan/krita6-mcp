@@ -11,7 +11,8 @@
     "bridge_protocol": 1
   },
   "checks": {
-    "tool_count": 13,
+    "tool_count": 16,
+    "optional_diffusion_absent": true,
     "duplicate_document_dispatched_once": true,
     "native_path_and_line": true,
     "inline_png": true,

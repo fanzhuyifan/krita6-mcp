@@ -1,0 +1,94 @@
+{
+  "passed": true,
+  "reference_commit": "dda58d1c63e361207ccec085efbc34dbd32f1654",
+  "source_kind": "unreleased Krita 6 development snapshot",
+  "generated_images": false,
+  "host": {
+    "krita_version": "6.0.3",
+    "qt_version": "6.11.2",
+    "pyqt_version": "6.11.0",
+    "python_version": "3.14.7",
+    "platform": "Linux",
+    "display_backend": "xcb",
+    "plugin_version": "0.1.0",
+    "bridge_protocol": 1
+  },
+  "fixture_jobs": "Synthetic records in the real upstream JobQueue; no backend execution",
+  "status": {
+    "availability": "available",
+    "plugin_version": "1.53.0",
+    "generation_control": false,
+    "connection_control": false,
+    "backend_health_check": false,
+    "connection_state": "auth_missing",
+    "connection_error_present": false,
+    "available_model_count": null,
+    "tracked_document_count": 1
+  },
+  "document": {
+    "availability": "available",
+    "plugin_version": "1.53.0",
+    "generation_control": false,
+    "connection_control": false,
+    "backend_health_check": false,
+    "connection_state": "auth_missing",
+    "connection_error_present": false,
+    "available_model_count": null,
+    "tracked_document_count": 1,
+    "document_status": "tracked",
+    "model": {
+      "workspace": "generation",
+      "prompt_scope": "generation_root",
+      "positive_prompt": "A red test square",
+      "negative_prompt": "blur",
+      "style_name": "Anima",
+      "strength": 0.65,
+      "batch_count": 2,
+      "progress": 0.0,
+      "progress_kind": "generation",
+      "error_kind": "none",
+      "truncated_fields": []
+    }
+  },
+  "observed_job_states": [
+    "queued",
+    "executing",
+    "finished",
+    "cancelled"
+  ],
+  "checks": {
+    "sixteen_mcp_tools": true,
+    "real_plugin_loaded": true,
+    "document_inspection": true,
+    "paginated_jobs": true,
+    "nullable_plugin_job_id": true,
+    "preserved_pixels": true,
+    "preserved_filename": true,
+    "preserved_modified": true,
+    "preserved_models": true,
+    "preserved_selection": true,
+    "preserved_jobs": true,
+    "preserved_positive": true,
+    "preserved_negative": true,
+    "preserved_strength": true,
+    "preserved_batch_count": true,
+    "preserved_style_name": true,
+    "preserved_layers": true,
+    "preserved_connection": true,
+    "preserved_client_absent": true,
+    "no_generation_backend": true
+  },
+  "upstream_files_sha256": {
+    "ai_diffusion/__init__.py": "ca760fdad688fbf8d84150d82f6e7cec0b5ee1ec03fe2fd5c636c968b4ef772e",
+    "ai_diffusion/extension.py": "b39c47d683891a221da2cdfc79efb24d86c99975f76b53919e506b794c63bf93",
+    "ai_diffusion/document.py": "d3fab9a0f67456a033b543d82e577b17e52bb4c3a59001ea9f66877bbd520364",
+    "ai_diffusion/model/root.py": "7449ddc8cb465767f57d52092d2917c45ead8ab5d34633272f5d2fc969d1471d",
+    "ai_diffusion/model/model.py": "e662dc70fe54c7f561467b7081874095cea41d146d19b4e67bac807c20966f9d",
+    "ai_diffusion/model/jobs.py": "f7d282cafa44bfe4524cf4559f49dc87291a0338d7b31e7e9f8dd78450a79cae",
+    "ai_diffusion/model/connection.py": "629665d8587e46b88bd58a8dc34f993f774b7ef8e4bfc3f6c031d436c8fde162"
+  },
+  "dependency_fixture": {
+    "websockets_source": "Bundled dependency from official v1.53.0 release ZIP",
+    "release_zip_sha256": "05b4e4072faecbcfa441a8829c97492cfe35974c92e407d0197db4e78ec91cbe"
+  }
+}
