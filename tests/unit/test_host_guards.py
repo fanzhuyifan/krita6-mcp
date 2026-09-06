@@ -55,49 +55,6 @@ def host_modules(monkeypatch):
     return modules
 
 
-@pytest.mark.parametrize(
-    "relative", ["../outside.kra", "/tmp/outside.kra", "wrong.png", "folder/../../outside.kra"]
-)
-def test_output_path_rejects_escaping_and_wrong_format(host_modules, tmp_path, relative):
-    host, _ = host_modules
-    with pytest.raises(BridgeError) as error:
-        host.resolve_output_path({"scratch": tmp_path}, "scratch", relative, ".kra", False)
-    assert error.value.code == "INVALID_PATH"
-
-
-def test_output_path_requires_overwrite_and_rejects_symlink_escape(host_modules, tmp_path):
-    host, _ = host_modules
-    root = tmp_path / "root"
-    root.mkdir()
-    output = root / "drawing.kra"
-    output.write_bytes(b"existing")
-    with pytest.raises(BridgeError) as error:
-        host.resolve_output_path({"scratch": root}, "scratch", "drawing.kra", ".kra", False)
-    assert error.value.code == "FILE_EXISTS"
-    assert (
-        host.resolve_output_path({"scratch": root}, "scratch", "drawing.kra", ".kra", True)
-        == output
-    )
-    (root / "escape").symlink_to(tmp_path, target_is_directory=True)
-    with pytest.raises(BridgeError) as error:
-        host.resolve_output_path({"scratch": root}, "scratch", "escape/drawing.kra", ".kra", True)
-    assert error.value.code == "INVALID_PATH"
-    assert output.read_bytes() == b"existing"
-    (root / "misleading.kra").symlink_to(root / "wrong.txt")
-    with pytest.raises(BridgeError) as error:
-        host.resolve_output_path({"scratch": root}, "scratch", "misleading.kra", ".kra", True)
-    assert error.value.code == "INVALID_PATH"
-
-
-def test_output_path_rejects_directory_and_missing_parent(host_modules, tmp_path):
-    host, _ = host_modules
-    (tmp_path / "directory.kra").mkdir()
-    for relative in ("directory.kra", "missing/output.kra"):
-        with pytest.raises(BridgeError) as error:
-            host.resolve_output_path({"scratch": tmp_path}, "scratch", relative, ".kra", True)
-        assert error.value.code == "INVALID_PATH"
-
-
 def test_pending_retains_gate_while_busy_and_resolves_fresh_document(host_modules):
     host, _ = host_modules
     calls = []

@@ -1,6 +1,6 @@
 # Implementation contract v1
 
-This records the current implementation. All private-bridge JSON uses snake_case. Package `krita6_bridge` can be imported without Qt outside Krita; its pure protocol, ledger, discovery and transport modules are also packaged with the external server. The host and executor require Krita 6 and PyQt6. Capability labels distinguish implemented operations from completed host validation.
+This records the current implementation. All private-bridge JSON uses snake_case. Package `krita6_bridge` can be imported without Qt outside Krita; its pure protocol, ledger, discovery, transport and output-path modules are also packaged with the external server. The host and executor require Krita 6 and PyQt6. Capability labels distinguish implemented operations from completed host validation.
 
 ## Requests and results
 

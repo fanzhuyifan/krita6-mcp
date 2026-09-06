@@ -30,6 +30,7 @@ from krita import InfoObject, Krita, ManagedColor, Preset
 
 from .protocol import BridgeError, COMMANDS
 from .diffusion import DiffusionReader
+from .output_paths import resolve_output_path
 
 
 SRGB_PROFILE = "sRGB-elle-V2-srgbtrc.icc"
@@ -37,38 +38,6 @@ SRGB_PROFILE = "sRGB-elle-V2-srgbtrc.icc"
 # including documents/nodes created by the user outside the bridge.
 MAX_OPEN_DOCUMENTS = 32
 MAX_LAYER_NODES = 4096
-
-
-def resolve_output_path(output_roots, root_name, relative, extension, overwrite):
-    """Resolve a configured output destination without creating or writing files."""
-    if root_name not in output_roots:
-        raise BridgeError("OUTPUT_ROOT_NOT_FOUND", "Choose a configured output root.")
-    try:
-        root = Path(output_roots[root_name]).resolve(strict=True)
-    except (OSError, RuntimeError):
-        raise BridgeError(
-            "INVALID_PATH", "The configured output root is no longer available."
-        ) from None
-    path = Path(relative)
-    if not relative or path.is_absolute() or ".." in path.parts or path.suffix.lower() != extension:
-        raise BridgeError("INVALID_PATH", "Use a relative path with the required file extension.")
-    try:
-        destination = (root / path).resolve(strict=False)
-        destination.relative_to(root)
-    except (OSError, ValueError, RuntimeError):
-        raise BridgeError("INVALID_PATH", "The output path leaves its configured root.") from None
-    if destination.suffix.lower() != extension:
-        raise BridgeError(
-            "INVALID_PATH", "The resolved destination has an unsupported file extension."
-        )
-    if not root.is_dir() or not destination.parent.is_dir():
-        raise BridgeError("INVALID_PATH", "The output root and parent directory must exist.")
-    if destination.exists():
-        if not destination.is_file():
-            raise BridgeError("INVALID_PATH", "The destination is not a regular file.")
-        if not overwrite:
-            raise BridgeError("FILE_EXISTS", "The destination exists; overwrite must be explicit.")
-    return destination
 
 
 class Pending:
@@ -184,10 +153,7 @@ class KritaHost:
         }
         if command not in handlers:
             raise BridgeError("UNKNOWN_COMMAND", "This host does not support the command.")
-        result = handlers[command](request.get("target", {}), request.get("params", {}))
-        if isinstance(result, Pending):
-            return result
-        return result
+        return handlers[command](request.get("target", {}), request.get("params", {}))
 
     def _diffusion_status(self, target, params):
         return self._diffusion.status()

@@ -2,10 +2,8 @@
 
 import json
 import os
-import re
 import threading
 import uuid
-from pathlib import Path
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QMessageBox
@@ -14,43 +12,9 @@ from krita import Extension, Krita
 from .executor import GuiExecutor
 from .host import KritaHost
 from .operations import OperationLedger
+from .output_paths import parse_output_roots
 from .protocol import BridgeError
 from .transport import ArtifactStore, BridgeServer
-
-
-def parse_output_roots(value):
-    try:
-        roots = json.loads(value or "{}")
-    except (ValueError, TypeError):
-        raise BridgeError(
-            "INVALID_CONFIGURATION", "KRITA6_MCP_OUTPUT_ROOTS must be a JSON object."
-        ) from None
-    if not isinstance(roots, dict) or len(roots) > 32:
-        raise BridgeError("INVALID_CONFIGURATION", "Configure at most 32 named output roots.")
-    result = {}
-    for name, path in roots.items():
-        if (
-            not isinstance(name, str)
-            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name) is None
-            or not isinstance(path, str)
-            or not Path(path).is_absolute()
-        ):
-            raise BridgeError(
-                "INVALID_CONFIGURATION",
-                "Output roots need simple names and absolute directory paths.",
-            )
-        try:
-            directory = Path(path).resolve(strict=True)
-        except (OSError, RuntimeError):
-            raise BridgeError(
-                "INVALID_CONFIGURATION", "Each output root must be an existing directory."
-            ) from None
-        if not directory.is_dir():
-            raise BridgeError(
-                "INVALID_CONFIGURATION", "Each output root must be an existing directory."
-            )
-        result[name] = directory
-    return result
 
 
 class KritaBridgeExtension(Extension):

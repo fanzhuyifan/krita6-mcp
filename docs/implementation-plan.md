@@ -69,6 +69,7 @@ plugin/
     operations.py           # Admission, cancellation, deduplication
     discovery.py            # POSIX state files and session discovery
     protocol.py             # Shared strict command validation
+    output_paths.py         # Standard-library output-root and path checks
     host.py                 # Live identities, commands, painting, preview
     diffusion.py            # Optional observation of already loaded Qt6 plugin
 tests/
