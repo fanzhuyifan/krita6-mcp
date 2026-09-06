@@ -54,7 +54,11 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
     async def call(method, *args, **kwargs) -> CallToolResult:
         try:
             data = await asyncio.to_thread(method, *args, **kwargs)
-            return _result(data, error=data.get("state") in {"failed", "cancelled", "expired"})
+            return _result(
+                data,
+                error=bool(data.get("error"))
+                or data.get("state") in {"failed", "cancelled", "expired"},
+            )
         except BridgeError as exc:
             error_data = {"error": {"code": exc.code, "message": exc.message, "effect": exc.effect}}
             for key in ("instance_id", "operation_id"):

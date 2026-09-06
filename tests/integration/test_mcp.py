@@ -9,17 +9,20 @@ import os
 import sys
 import threading
 
+import pytest
 from mcp import Client, StdioServerParameters
 
 from krita6_bridge.operations import OperationLedger
 from krita6_bridge.transport import ArtifactStore, BridgeServer
+from krita6_mcp.server import create_server
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1sAAAAASUVORK5CYII="
 )
 
 
-def test_stdio_tools_mutations_and_inline_preview(tmp_path):
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
     ledger = OperationLedger("integration")
     artifacts = ArtifactStore()
     server = BridgeServer(
@@ -57,7 +60,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path):
         parameters = StdioServerParameters(
             command=sys.executable, args=["-m", "krita6_mcp.cli", "serve"], env=environment
         )
-        async with Client(parameters) as client:
+        async with Client(parameters, mode=mode) as client:
             listed = await client.list_tools()
             tools = listed.tools if hasattr(listed, "tools") else listed
             by_name = {tool.name: tool for tool in tools}
@@ -106,3 +109,61 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path):
         stop.set()
         thread.join(timeout=2)
         server.stop()
+
+
+def test_expired_result_reports_retrieval_error_without_replay():
+    now = [0.0]
+    ledger = OperationLedger("expiry-test", result_ttl=1, clock=lambda: now[0])
+    dispatched = []
+
+    class LedgerBridge:
+        def execute(self, command, *, instance_id, operation_id, target, params):
+            snapshot = ledger.admit(
+                {
+                    "bridge_protocol": 1,
+                    "instance_id": instance_id,
+                    "operation_id": operation_id,
+                    "command": command,
+                    "target": target or {},
+                    "params": params,
+                }
+            )
+            if snapshot["state"] == "queued":
+                dispatched.append(ledger.take_next())
+                return ledger.finish(operation_id, result={"document_id": "scratch"})
+            return snapshot
+
+        def get_operation(self, instance_id, operation_id):
+            assert instance_id == ledger.instance_id
+            return ledger.get(operation_id)
+
+    server = create_server(LedgerBridge())
+    params = {
+        "instance_id": "expiry-test",
+        "operation_id": "create-once",
+        "width": 32,
+        "height": 32,
+        "name": "scratch",
+    }
+
+    async def scenario():
+        original = await server.call_tool("krita_create_document", params)
+        assert not original.is_error
+        now[0] = 2.0
+        retrieved = await server.call_tool(
+            "krita_get_operation",
+            {
+                "instance_id": "expiry-test",
+                "operation_id": "create-once",
+            },
+        )
+        retried = await server.call_tool("krita_create_document", params)
+        for response in (retrieved, retried):
+            assert response.is_error
+            assert response.structured_content["state"] == "succeeded"
+            assert response.structured_content["effect"] == "applied"
+            assert response.structured_content["result"] is None
+            assert response.structured_content["error"]["code"] == "RESULT_EXPIRED"
+        assert len(dispatched) == 1
+
+    asyncio.run(scenario())
