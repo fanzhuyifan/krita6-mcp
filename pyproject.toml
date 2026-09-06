@@ -7,11 +7,34 @@ name = "krita6-mcp"
 version = "0.1.0"
 description = "A local MCP bridge for Krita 6 native painting"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = ["mcp>=2.1.1,<3"]
+keywords = ["krita", "mcp", "digital-painting", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Plugins",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Graphics :: Editors :: Raster-Based",
+]
 
 [project.scripts]
 krita6-mcp = "krita6_mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/fanzhuyifan/krita6-mcp"
+Repository = "https://github.com/fanzhuyifan/krita6-mcp"
+Documentation = "https://github.com/fanzhuyifan/krita6-mcp/blob/master/README.md"
+Issues = "https://github.com/fanzhuyifan/krita6-mcp/issues"
+Changelog = "https://github.com/fanzhuyifan/krita6-mcp/blob/master/CHANGELOG.md"
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.12,<1"]

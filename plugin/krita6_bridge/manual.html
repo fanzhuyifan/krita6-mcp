@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Krita 6 MCP Bridge</title></head>
+<body>
+<h1>Krita 6 MCP Bridge</h1>
+<p>This plugin connects an external MCP client to Krita 6 through a local authenticated bridge.
+It is alpha software. The verified native workflow uses Linux/Krita 6.0.3; consult the repository's
+validation record for supported brushes, color spaces, and remaining limits.</p>
+<h2>Connect</h2>
+<p>Install the external Python package from the same release, configure your MCP client to run
+<code>python -m krita6_mcp.cli serve</code> using that environment's absolute Python path,
+and run <code>krita6-mcp doctor --json</code> to check discovery.</p>
+<p>The enabled plugin starts automatically. Start, Stop, and Status actions are under
+<strong>Tools → Scripts</strong>. Set <code>KRITA6_MCP_AUTOSTART=0</code> in Krita's environment
+before launch to start manually. Stopping waits for already dispatched native work to settle.</p>
+<h2>Save and export</h2>
+<p>Configure named output directories in Krita's environment before starting the application:</p>
+<pre>KRITA6_MCP_OUTPUT_ROOTS='{"art":"/absolute/path/to/artwork"}'</pre>
+<p>The directory must already exist. File tools accept a root name and relative path, with explicit
+overwrite permission. No output roots are needed for inspection, painting, or inline previews.</p>
+<h2>Operation outcomes</h2>
+<p>Reuse the same operation ID and arguments when retrying uncertain work. A timeout does not undo
+an edit. Check operation status before issuing another mutation. Painting requires the requested
+document's active view and a supported, unlocked paint layer. AI Diffusion tools only inspect an
+already loaded compatible plugin; they do not generate or apply images.</p>
+<h2>Support and license</h2>
+<p><a href="https://github.com/fanzhuyifan/krita6-mcp">Documentation and source</a> ·
+<a href="https://github.com/fanzhuyifan/krita6-mcp/issues">Issue tracker</a></p>
+<p>MIT licensed. The license is included beside this help page. This independent project is not
+an official KDE/Krita or Krita AI Diffusion project.</p>
+</body>
+</html>
