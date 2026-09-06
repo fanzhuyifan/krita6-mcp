@@ -75,7 +75,14 @@ class GuiExecutor(QObject):
             else:
                 self._finish(result=result)
         except BridgeError as error:
-            self._finish(error={"code": error.code, "message": error.message}, effect=error.effect)
+            # Pending results can already contain confirmed document/node handles
+            # even when native completion fails. Keep those recovery details with
+            # the terminal error, including when the document has since closed.
+            self._finish(
+                result=self._pending_recovery_result(),
+                error={"code": error.code, "message": error.message},
+                effect=error.effect,
+            )
         except Exception:
             # Exception text may contain document names, paths or plugin details.
             # Preserve uncertainty after dispatch without publishing those values.
@@ -83,9 +90,31 @@ class GuiExecutor(QObject):
                 "unknown" if self._current and self._current["command"] in MUTATIONS else "none"
             )
             self._finish(
+                result=self._pending_recovery_result(),
                 error={"code": "HOST_ERROR", "message": "An unexpected Krita host error occurred."},
                 effect=effect,
             )
+
+    def _pending_recovery_result(self):
+        result = self._pending.result if self._pending is not None else None
+        if not isinstance(result, dict):
+            return None
+        # Other Pending fields may describe expected success (for example,
+        # settings_restored or native_strokes). Preserve identities only; a known
+        # handle does not establish that the corresponding object is still live.
+        handles = {
+            key: result[key]
+            for key in (
+                "document_id",
+                "node_id",
+                "source_document_id",
+                "source_node_id",
+                "generation_id",
+                "result_id",
+            )
+            if key in result
+        }
+        return handles or None
 
     def _finish(self, result=None, error=None, effect=None):
         current = self._current

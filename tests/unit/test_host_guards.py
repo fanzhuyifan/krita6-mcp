@@ -101,6 +101,103 @@ def test_pending_closed_document_reports_unknown_effect(host_modules):
     assert error.value.effect == "unknown"
 
 
+@pytest.mark.parametrize("completion", ["partial", "closed", "unexpected"])
+def test_executor_preserves_pending_recovery_handles_with_terminal_error(host_modules, completion):
+    host_module, executor_module = host_modules
+    ledger = OperationLedger("instance-one")
+    request = validate_request(
+        {
+            "bridge_protocol": 1,
+            "instance_id": "instance-one",
+            "operation_id": "open-once",
+            "command": "open_document",
+            "params": {"root": "scratch", "path": "reference.kra"},
+        },
+        "instance-one",
+    )
+    ledger.admit(request)
+    recovery_handles = {
+        "document_id": "opened-document",
+        "node_id": "created-node",
+        "source_document_id": "source-document",
+        "source_node_id": "source-node",
+        "generation_id": "generation-one",
+        "result_id": "result-one",
+    }
+    known_result = {
+        **recovery_handles,
+        "native_strokes": 1,
+        "settings_restored": True,
+        "active_view": True,
+        "width": 128,
+    }
+    document = object()
+    dispatched = []
+
+    class FakeHost:
+        completed = False
+
+        def _assert_gui_thread(self):
+            pass
+
+        def _document(self, document_id):
+            assert document_id == "opened-document"
+            if self.completed and completion == "closed":
+                raise BridgeError("TARGET_NOT_FOUND", "Document closed")
+            return document
+
+        def _is_ready(self, current):
+            assert current is document
+            if self.completed and completion == "unexpected":
+                raise RuntimeError("Private native exception details")
+            return self.completed
+
+        def execute(self, current):
+            dispatched.append(current)
+            return host_module.Pending(
+                self,
+                "opened-document",
+                known_result,
+                error=BridgeError("OPEN_FAILED", "The view could not be initialized.", "partial"),
+            )
+
+    host = FakeHost()
+    executor = executor_module.GuiExecutor.__new__(executor_module.GuiExecutor)
+    executor.host, executor.ledger = host, ledger
+    executor._current = executor._pending = None
+    executor._disposed = executor._draining = False
+    executor.tick()
+    executor.tick()
+    running = ledger.get("open-once")
+    assert running["state"] == "running"
+    assert running["result"] is None
+    assert len(dispatched) == 1
+    assert not ledger.is_idle()
+
+    host.completed = True
+    executor.tick()
+    outcome = ledger.get("open-once")
+    assert outcome["state"] == "failed"
+    assert outcome["result"] == recovery_handles
+    assert outcome["effect"] == ("partial" if completion == "partial" else "unknown")
+    assert (
+        outcome["error"]["code"]
+        == {
+            "partial": "OPEN_FAILED",
+            "closed": "OUTCOME_UNKNOWN",
+            "unexpected": "HOST_ERROR",
+        }[completion]
+    )
+    assert "Private native" not in str(outcome)
+    assert executor._current is executor._pending is None
+    assert ledger.is_idle()
+    # The ledger retains a plain-data copy for reconciliation and duplicate IDs.
+    known_result["document_id"] = "later-change"
+    assert ledger.admit(request) == outcome
+    assert ledger.take_next() is None
+    assert len(dispatched) == 1
+
+
 def test_diffusion_read_results_report_current_generation_availability(host_modules):
     host_module, _ = host_modules
     host = host_module.KritaHost.__new__(host_module.KritaHost)
@@ -622,7 +719,7 @@ def test_activation_waits_for_actual_application_view(host_modules):
     assert error.value.effect == "unknown"
 
 
-def test_editing_refresh_failure_retains_pending_unknown_effect(host_modules):
+def test_editing_refresh_failure_retains_pending_partial_effect(host_modules):
     host, _ = host_modules
     fake = host.KritaHost.__new__(host.KritaHost)
     fake._assert_gui_thread = lambda: None
@@ -637,7 +734,7 @@ def test_editing_refresh_failure_retains_pending_unknown_effect(host_modules):
     pending = fake._editing_mutate("doc", lambda: None, {})
     with pytest.raises(BridgeError) as error:
         pending.poll()
-    assert error.value.effect == "unknown"
+    assert error.value.effect == "partial"
 
 
 def test_move_detaches_before_insert_and_checks_position(host_modules):
@@ -684,3 +781,45 @@ def test_move_detaches_before_insert_and_checks_position(host_modules):
     assert calls == ["detach", "insert"]
     assert children == [sibling, node]
     assert result["node_id"] == "layer"
+
+
+@pytest.mark.parametrize("completed,effect", [(0, "unknown"), (1, "partial"), (2, "partial")])
+def test_editing_steps_report_completed_phases(host_modules, completed, effect):
+    host, _ = host_modules
+    changes = []
+
+    def write():
+        changes.append("written")
+        return True
+
+    with pytest.raises(BridgeError) as error:
+        host.KritaHost._editing_steps([write] * completed + [lambda: False])
+    assert len(changes) == completed
+    assert error.value.effect == effect
+
+
+def test_partial_pixel_edit_survives_refresh_failure(host_modules):
+    host, _ = host_modules
+    fake = host.KritaHost.__new__(host.KritaHost)
+    fake._assert_gui_thread = lambda: None
+    cleared = []
+
+    def clear():
+        cleared.append(True)
+        return True
+
+    def failed_refresh():
+        raise RuntimeError("refresh failed")
+
+    document = types.SimpleNamespace(
+        setModified=lambda value: None, refreshProjection=failed_refresh
+    )
+    fake._document = lambda handle: document
+    fake._is_ready = lambda doc: True
+    pending = fake._editing_mutate(
+        "doc", lambda: fake._editing_steps([clear, lambda: False]), {"node_id": "node"}
+    )
+    assert cleared == [True]
+    with pytest.raises(BridgeError) as error:
+        pending.poll()
+    assert error.value.effect == "partial"

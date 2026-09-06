@@ -187,6 +187,28 @@ async def scenario(base, instance_id):
         polygon = document(await fixture(), "Editing source")
         mask = base64.b64decode(polygon["selection"]["pixels"])
         assert mask[12 * 128 + 12] == 255 and mask[25 * 128 + 25] == 0
+        await call(
+            "krita_set_selection",
+            operation_id="edit-bowtie",
+            document_id=source_id,
+            shape="polygon",
+            points=[[10, 10], [30, 30], [10, 30], [30, 10]],
+        )
+        bowtie = document(await fixture(), "Editing source")
+        mask = base64.b64decode(bowtie["selection"]["pixels"])
+        assert mask[12 * 128 + 20] == 255 and mask[28 * 128 + 20] == 255
+        assert mask[20 * 128 + 11] == 0 and mask[8 * 128 + 20] == 0
+        _, rejected = await call(
+            "krita_set_selection",
+            failure=True,
+            operation_id="edit-empty-polygon",
+            document_id=source_id,
+            shape="polygon",
+            points=[[10, 10], [10, 10], [10, 10]],
+        )
+        assert rejected["error"]["code"] == "INVALID_GEOMETRY"
+        assert document(await fixture(), "Editing source")["selection"] == bowtie["selection"]
+        checks["odd_even_bowtie_lobes_and_empty_polygon_rejection"] = True
         await call("krita_clear_selection", operation_id="edit-clear", document_id=source_id)
         before = document(await fixture(), "Editing source")
         assert before["selection"] is None or before["selection"]["bounds"][2:] == [0, 0]

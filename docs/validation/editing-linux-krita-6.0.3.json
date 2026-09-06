@@ -13,6 +13,7 @@
   "checks": {
     "tool_count": 32,
     "activation_selects_requested_document": true,
+    "odd_even_bowtie_lobes_and_empty_polygon_rejection": true,
     "rectangle_polygon_and_clear_selection": true,
     "native_bezier_pixels_duplicate_and_one_undo_redo": true,
     "png_import_offset_channels_alpha_and_retry": true,

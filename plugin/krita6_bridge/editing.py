@@ -93,6 +93,8 @@ class EditingMixin:
         failure = None
         try:
             callback()
+        except BridgeError as error:
+            failure = error
         except Exception:
             failure = BridgeError(
                 "EDIT_FAILED",
@@ -105,17 +107,39 @@ class EditingMixin:
             document.setModified(True)
             document.refreshProjection()
         except Exception:
-            failure = BridgeError(
-                "EDIT_FAILED",
-                "The edit or projection refresh failed after dispatch; inspect the target.",
-                effect="unknown",
-            )
+            if failure is None:
+                failure = BridgeError(
+                    "EDIT_FAILED",
+                    "The edit completed but projection refresh failed; inspect the target.",
+                    effect="partial",
+                )
         return Pending(
             self,
             document_id,
             {"document_id": document_id, "undo": "not_guaranteed", **result},
             error=failure,
         )
+
+    @staticmethod
+    def _editing_steps(steps):
+        """Track completed mutation phases without claiming rollback or atomicity."""
+        completed = 0
+        for step in steps:
+            try:
+                if step() is False:
+                    raise RuntimeError("Native edit phase was not confirmed")
+            except Exception as error:
+                effect = (
+                    "partial"
+                    if completed
+                    else (error.effect if isinstance(error, BridgeError) else "unknown")
+                )
+                raise BridgeError(
+                    "EDIT_FAILED",
+                    "An edit phase failed; inspect the known targets before continuing.",
+                    effect=effect,
+                ) from None
+            completed += 1
 
     def _activate_document(self, target, params):
         from .host import Pending
@@ -184,9 +208,6 @@ class EditingMixin:
             x, y = min(p[0] for p in points), min(p[1] for p in points)
             w, h = max(p[0] for p in points) - x + 1, max(p[1] for p in points) - y + 1
             self._editing_rect(document, x, y, w, h)
-            area = sum(a[0] * b[1] - a[1] * b[0] for a, b in zip(points, points[1:] + points[:1]))
-            if area == 0:
-                raise BridgeError("INVALID_GEOMETRY", "The polygon must enclose nonzero area.")
             mask = QImage(w, h, QImage.Format.Format_ARGB32)
             mask.fill(0)
             painter = QPainter(mask)
@@ -201,9 +222,10 @@ class EditingMixin:
             mask = mask.convertToFormat(QImage.Format.Format_Grayscale8)
             data = bytes(mask.constBits().asstring(mask.sizeInBytes()))
             stride = mask.bytesPerLine()
-            selection.setPixelData(
-                b"".join(data[row * stride : row * stride + w] for row in range(h)), x, y, w, h
-            )
+            packed = b"".join(data[row * stride : row * stride + w] for row in range(h))
+            if not any(packed):
+                raise BridgeError("INVALID_GEOMETRY", "The polygon must select at least one pixel.")
+            selection.setPixelData(packed, x, y, w, h)
         return self._editing_mutate(
             target["document_id"],
             lambda: document.setSelection(selection),
@@ -267,13 +289,17 @@ class EditingMixin:
             actual["opacity"] = round(actual["opacity"] * 255)
 
         def change():
-            for key, setter in (
-                ("name", node.setName),
-                ("visible", node.setVisible),
-                ("opacity", node.setOpacity),
-            ):
-                if key in actual:
-                    setter(actual[key])
+            self._editing_steps(
+                [
+                    (lambda setter=setter, value=actual[key]: setter(value))
+                    for key, setter in (
+                        ("name", node.setName),
+                        ("visible", node.setVisible),
+                        ("opacity", node.setOpacity),
+                    )
+                    if key in actual
+                ]
+            )
 
         return self._editing_mutate(
             target["document_id"], change, {"node_id": target["node_id"], **actual}
@@ -300,9 +326,12 @@ class EditingMixin:
         }
 
         def attach():
-            if not parent.addChildNode(copied, above):
-                raise RuntimeError("Layer attachment failed")
-            destination.setActiveNode(copied)
+            self._editing_steps(
+                (
+                    lambda: parent.addChildNode(copied, above),
+                    lambda: destination.setActiveNode(copied),
+                )
+            )
 
         return self._editing_mutate(params["destination_document_id"], attach, result)
 
@@ -317,13 +346,7 @@ class EditingMixin:
         if old_parent is None:
             raise BridgeError("INVALID_TARGET", "The layer has no parent to move from.")
 
-        def move():
-            # addChildNode alone silently leaves already-attached nodes in place.
-            # Retain the wrapper during explicit detach/reinsert on the GUI thread.
-            if not old_parent.removeChildNode(node):
-                raise RuntimeError("Layer detachment failed")
-            if not parent.addChildNode(node, above):
-                raise RuntimeError("Layer insertion failed")
+        def verify_position():
             siblings = parent.childNodes()
             if node not in siblings or node.parentNode() != parent:
                 raise RuntimeError("Layer did not reach its destination")
@@ -331,6 +354,17 @@ class EditingMixin:
                 raise RuntimeError("Layer did not reach the requested sibling position")
             if above is None and siblings[-1] != node:
                 raise RuntimeError("Layer did not reach the top of its group")
+
+        def move():
+            # addChildNode alone silently leaves already-attached nodes in place.
+            # Retain the wrapper during explicit detach/reinsert on the GUI thread.
+            self._editing_steps(
+                (
+                    lambda: old_parent.removeChildNode(node),
+                    lambda: parent.addChildNode(node, above),
+                    verify_position,
+                )
+            )
 
         return self._editing_mutate(
             target["document_id"],
@@ -395,14 +429,16 @@ class EditingMixin:
         cleared = bytes(len(raw))
 
         def replace():
-            if not node.setPixelData(
-                cleared, bounds.x(), bounds.y(), bounds.width(), bounds.height()
-            ):
-                raise RuntimeError("Pixel clear failed")
-            if not node.setPixelData(
-                transformed, output.x(), output.y(), output.width(), output.height()
-            ):
-                raise RuntimeError("Pixel write failed")
+            self._editing_steps(
+                (
+                    lambda: node.setPixelData(
+                        cleared, bounds.x(), bounds.y(), bounds.width(), bounds.height()
+                    ),
+                    lambda: node.setPixelData(
+                        transformed, output.x(), output.y(), output.width(), output.height()
+                    ),
+                )
+            )
 
         return self._editing_mutate(
             target["document_id"],
@@ -453,11 +489,15 @@ class EditingMixin:
             raise BridgeError("CREATE_FAILED", "Krita could not create the imported layer.")
 
         def attach():
-            if not document.rootNode().addChildNode(node, None):
-                raise RuntimeError("Layer attachment failed")
-            if not node.setPixelData(raw, params["x"], params["y"], image.width(), image.height()):
-                raise RuntimeError("Image import failed")
-            document.setActiveNode(node)
+            self._editing_steps(
+                (
+                    lambda: document.rootNode().addChildNode(node, None),
+                    lambda: node.setPixelData(
+                        raw, params["x"], params["y"], image.width(), image.height()
+                    ),
+                    lambda: document.setActiveNode(node),
+                )
+            )
 
         return self._editing_mutate(
             target["document_id"],
