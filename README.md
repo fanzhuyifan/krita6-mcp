@@ -132,6 +132,10 @@ The probe verifies source fingerprints, loads the real plugin in an isolated pro
 
 Keep protocol changes and host behavior documented together. Unimplemented capabilities are not silently emulated with a different rendering backend.
 
+## Development approach
+
+This project was developed primarily with AI coding agents. It is early-alpha software with automated tests and limited live testing on Krita 6.0.3/Linux. See the [validation record](docs/validation.md) for tested behavior and known limitations. Review and additional compatibility testing are welcome.
+
 ## Contributing and support
 
 Bug reports, small focused pull requests, and reproducible compatibility results are welcome. Start with an issue for substantial API changes. Use [GitHub issues](https://github.com/fanzhuyifan/krita6-mcp/issues) for bugs and feature requests; use the [security policy](SECURITY.md) for vulnerabilities. Do not upload discovery tokens, private logs, credentials, or artwork without permission. The default development branch is `master`.
