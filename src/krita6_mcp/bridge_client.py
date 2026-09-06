@@ -102,24 +102,47 @@ class BridgeClient:
                 raw = response.read(maximum + 1)
                 content_type = response.headers.get_content_type()
         except HTTPError as exc:
-            if 300 <= exc.code < 400:
-                raise BridgeError(
-                    "INVALID_BRIDGE_RESPONSE", "Bridge redirects are forbidden"
-                ) from None
-            raw_error = exc.read(MAX_DISCOVERY_BYTES + 1)
-            try:
-                error = json.loads(raw_error)["error"]
-                code = error["code"]
-                message = error["message"]
-                effect = error.get("effect", "none")
-                if not isinstance(code, str) or not isinstance(message, str):
-                    raise ValueError
-                if effect not in {"none", "applied", "partial", "unknown"}:
-                    raise ValueError
-            except (ValueError, KeyError, TypeError):
-                raise BridgeError(
-                    "INVALID_BRIDGE_RESPONSE", f"Bridge returned HTTP {exc.code}"
-                ) from None
+            with exc:
+                if 300 <= exc.code < 400:
+                    raise BridgeError(
+                        "INVALID_BRIDGE_RESPONSE", "Bridge redirects are forbidden"
+                    ) from None
+                try:
+                    raw_error = exc.read(MAX_DISCOVERY_BYTES + 1)
+                except (URLError, TimeoutError, OSError, HTTPException):
+                    # Exceptions raised inside an except block do not reach the
+                    # sibling handler below. Preserve the same uncertain-outcome
+                    # handling used when a successful response is interrupted.
+                    raise BridgeError(
+                        "BRIDGE_UNAVAILABLE", "Could not read the Krita bridge error response"
+                    ) from None
+                if len(raw_error) > MAX_DISCOVERY_BYTES:
+                    raise BridgeError(
+                        "INVALID_BRIDGE_RESPONSE", "Bridge error response exceeds the size limit"
+                    ) from None
+                try:
+                    expected_length = exc.headers.get("Content-Length")
+                    if expected_length is not None and (
+                        not expected_length.isascii()
+                        or not expected_length.isdecimal()
+                        or int(expected_length) != len(raw_error)
+                    ):
+                        raise ValueError
+                    if exc.headers.get_content_type() != "application/json":
+                        raise ValueError
+                    error = json.loads(raw_error)["error"]
+                    code = error["code"]
+                    message = error["message"]
+                    effect = error.get("effect", "none")
+                    if not isinstance(code, str) or not isinstance(message, str):
+                        raise ValueError
+                    if effect not in {"none", "applied", "partial", "unknown"}:
+                        raise ValueError
+                except (ValueError, KeyError, TypeError, RecursionError):
+                    raise BridgeError(
+                        "INVALID_BRIDGE_RESPONSE",
+                        f"Bridge returned invalid HTTP {exc.code} error data",
+                    ) from None
             raise BridgeError(code, message, effect=effect) from None
         except (URLError, TimeoutError, OSError, HTTPException):
             raise BridgeError(

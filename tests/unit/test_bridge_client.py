@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from krita6_bridge.protocol import BridgeError
-from krita6_mcp.bridge_client import BridgeClient
+from krita6_mcp.bridge_client import MAX_DISCOVERY_BYTES, BridgeClient
 from krita6_mcp.cli import main
 
 TOKEN = "a" * 64
@@ -181,3 +181,131 @@ def test_wrong_instance_does_not_receive_mutation(tmp_path):
             )
         assert error.value.code == "INSTANCE_MISMATCH"
         assert paths == ["/v1/session"]
+
+
+def broken_error_reply(request, fault, release):
+    error_body = json.dumps(
+        {"error": {"code": "QUEUE_FULL", "message": "Queue full", "effect": "none"}}
+    ).encode()
+    request.send_response(400)
+    request.send_header("Content-Type", "application/json")
+    if fault == "incomplete_chunk":
+        request.send_header("Transfer-Encoding", "chunked")
+        request.end_headers()
+        request.wfile.write(b"40\r\n{")
+    else:
+        if fault == "oversized":
+            body = error_body + b" " * (MAX_DISCOVERY_BYTES + 1 - len(error_body))
+        elif fault == "malformed":
+            body = b'{"error":'
+        elif fault == "deep_json":
+            body = b"[" * 2000 + b"]" * 2000
+        else:
+            body = error_body
+        declared_length = len(body) + (1 if fault in {"truncated", "stalled"} else 0)
+        request.send_header("Content-Length", str(declared_length))
+        request.end_headers()
+        request.wfile.write(body)
+    request.wfile.flush()
+    if fault == "stalled":
+        release.wait(timeout=2)
+    request.close_connection = True
+
+
+@pytest.mark.parametrize(
+    "fault", ["truncated", "stalled", "incomplete_chunk", "oversized", "malformed", "deep_json"]
+)
+def test_broken_http_error_preserves_uncertain_mutation_identity(tmp_path, fault):
+    submitted = []
+    release = threading.Event()
+
+    def handler(request):
+        if request.path == "/v1/session":
+            session(request)
+            return
+        submitted.append(json.loads(request.rfile.read(int(request.headers["Content-Length"]))))
+        broken_error_reply(request, fault, release)
+
+    with bridge_endpoint(tmp_path, handler) as (client, _):
+        client.timeout = 0.1
+        try:
+            with pytest.raises(BridgeError) as error:
+                client.execute(
+                    "create_document",
+                    instance_id="test",
+                    operation_id="uncertain-once",
+                    params={"width": 16, "height": 16, "name": "scratch"},
+                )
+            assert error.value.code == "OUTCOME_UNKNOWN"
+            assert error.value.effect == "unknown"
+            assert "uncertain-once" in error.value.message
+            assert len(submitted) == 1
+            assert submitted[0]["operation_id"] == "uncertain-once"
+        finally:
+            release.set()
+
+
+@pytest.mark.parametrize("fault", ["stalled", "incomplete_chunk", "oversized"])
+def test_broken_http_poll_error_retains_snapshot_for_reconciliation(tmp_path, fault):
+    submitted = []
+    release = threading.Event()
+    snapshot = {
+        "instance_id": "test",
+        "operation_id": "still-running",
+        "command": "create_document",
+        "state": "running",
+        "effect": "unknown",
+        "result": None,
+        "error": None,
+    }
+
+    def handler(request):
+        if request.path == "/v1/session":
+            session(request)
+        elif request.command == "POST":
+            submitted.append(json.loads(request.rfile.read(int(request.headers["Content-Length"]))))
+            reply(request, snapshot, status=202)
+        else:
+            broken_error_reply(request, fault, release)
+
+    with bridge_endpoint(tmp_path, handler) as (client, _):
+        client.timeout = 0.1
+        try:
+            result = client.execute(
+                "create_document",
+                instance_id="test",
+                operation_id="still-running",
+                params={"width": 16, "height": 16, "name": "scratch"},
+            )
+            assert result == {**snapshot, "reconciliation_required": True}
+            assert len(submitted) == 1
+            assert submitted[0]["operation_id"] == "still-running"
+        finally:
+            release.set()
+
+
+def test_complete_http_error_preserves_domain_rejection(tmp_path):
+    submitted = []
+
+    def handler(request):
+        if request.path == "/v1/session":
+            session(request)
+            return
+        submitted.append(json.loads(request.rfile.read(int(request.headers["Content-Length"]))))
+        reply(
+            request,
+            {"error": {"code": "QUEUE_FULL", "message": "Queue full", "effect": "none"}},
+            status=429,
+        )
+
+    with bridge_endpoint(tmp_path, handler) as (client, _):
+        with pytest.raises(BridgeError) as error:
+            client.execute(
+                "create_document",
+                instance_id="test",
+                operation_id="unadmitted",
+                params={"width": 16, "height": 16, "name": "scratch"},
+            )
+        assert error.value.code == "QUEUE_FULL"
+        assert error.value.effect == "none"
+        assert len(submitted) == 1
