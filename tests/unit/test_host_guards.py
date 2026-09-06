@@ -338,6 +338,115 @@ def test_post_dispatch_failure_retains_gate_until_native_completion(
     assert ledger.is_idle()
 
 
+@pytest.mark.parametrize(
+    "failure_phase", ["attach_exception", "attach_false", "refresh", "uuid", "name"]
+)
+@pytest.mark.parametrize("drain", [False, True])
+def test_layer_failure_retains_gate_without_duplicate_layer(host_modules, failure_phase, drain):
+    host_module, executor_module = host_modules
+    created, attached, drained = [], [], []
+    document = types.SimpleNamespace(ready=True)
+
+    def create_node(name, kind):
+        node = types.SimpleNamespace(index=len(created), label=name)
+
+        def node_name():
+            if node.index == 0 and failure_phase == "name":
+                raise RuntimeError("injected metadata failure")
+            return node.label
+
+        node.name = node_name
+        created.append(node)
+        return node
+
+    def attach_node(node, above):
+        document.ready = False
+        attached.append(node)
+        if node.index == 0 and failure_phase == "attach_exception":
+            raise RuntimeError("injected exception after scheduling attachment")
+        return not (node.index == 0 and failure_phase == "attach_false")
+
+    def refresh():
+        if len(created) == 1 and failure_phase == "refresh":
+            raise RuntimeError("injected exception after scheduling projection")
+
+    def node_id(node):
+        if node.index == 0 and failure_phase == "uuid":
+            raise RuntimeError("injected UUID metadata failure")
+        return "node-" + str(node.index)
+
+    parent = types.SimpleNamespace(type=lambda: "grouplayer", addChildNode=attach_node)
+    document.rootNode = lambda: parent
+    document.createNode = create_node
+    document.setActiveNode = lambda node: None
+    document.refreshProjection = refresh
+    host = host_module.KritaHost.__new__(host_module.KritaHost)
+    host._assert_gui_thread = lambda: None
+    host._document = lambda handle: document
+    host._require_ready = lambda document: None
+    host._require_layer_capacity = lambda document: None
+    host._writable_color = lambda document: None
+    host._unlocked_ancestry = lambda node: None
+    host._node_id = node_id
+    host._is_ready = lambda document: document.ready
+    host.execute = lambda request: host._create_paint_layer(request["target"], request["params"])
+    ledger = OperationLedger("instance-one")
+
+    def request(identifier):
+        return validate_request(
+            {
+                "bridge_protocol": 1,
+                "instance_id": "instance-one",
+                "operation_id": identifier,
+                "command": "create_paint_layer",
+                "target": {"document_id": "doc-one"},
+                "params": {"name": identifier},
+            },
+            "instance-one",
+        )
+
+    first, following = request("layer-first"), request("layer-following")
+    ledger.admit(first)
+    ledger.admit(following)
+    executor = executor_module.GuiExecutor.__new__(executor_module.GuiExecutor)
+    executor.host, executor.ledger = host, ledger
+    executor._current = executor._pending = None
+    executor._disposed = executor._draining = False
+    executor.on_drained = lambda: drained.append(True)
+    executor.timer = types.SimpleNamespace(isActive=lambda: True, stop=lambda: None)
+    executor.tick()
+    assert len(created) == len(attached) == 1
+    assert ledger.admit(first)["state"] == "running"
+    if drain:
+        executor.drain()
+    executor.tick()
+    executor.tick()
+    assert ledger.get("layer-first")["state"] == "running"
+    assert ledger.get("layer-following")["state"] == ("cancelled" if drain else "queued")
+    assert len(created) == len(attached) == 1
+    assert not ledger.is_idle()
+    assert drained == []
+
+    document.ready = True
+    executor.tick()
+    outcome = ledger.get("layer-first")
+    assert outcome["state"] == "failed"
+    assert outcome["effect"] == ("unknown" if failure_phase.startswith("attach") else "partial")
+    assert outcome["error"]["code"] == "CREATE_FAILED"
+    assert ledger.admit(first)["state"] == "failed"
+    executor.tick()
+    if drain:
+        assert drained == [True]
+        assert len(created) == len(attached) == 1
+    else:
+        assert ledger.get("layer-following")["state"] == "running"
+        assert len(created) == len(attached) == 2
+        document.ready = True
+        executor.tick()
+        assert ledger.get("layer-following")["state"] == "succeeded"
+    assert ledger.is_idle()
+
+
 def test_executor_disposal_disconnects_qt_and_releases_cached_state(host_modules):
     _, executor_module = host_modules
     events = []

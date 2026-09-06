@@ -564,11 +564,20 @@ class KritaHost:
         node = document.createNode(params["name"], "paintlayer")
         if node is None:
             raise BridgeError("CREATE_FAILED", "Krita could not create the paint layer.")
-        if not parent.addChildNode(node, None):
-            raise BridgeError(
-                "CREATE_FAILED", "Krita could not attach the new paint layer.", effect="unknown"
-            )
+        attached = False
         try:
+            attached = parent.addChildNode(node, None)
+            if not attached:
+                return Pending(
+                    self,
+                    target["document_id"],
+                    {},
+                    error=BridgeError(
+                        "CREATE_FAILED",
+                        "Krita could not confirm attachment of the new paint layer.",
+                        effect="unknown",
+                    ),
+                )
             document.setActiveNode(node)
             document.refreshProjection()
             return Pending(
@@ -582,11 +591,21 @@ class KritaHost:
                 },
             )
         except Exception:
-            raise BridgeError(
-                "CREATE_FAILED",
-                "The layer was attached but initialization failed.",
-                effect="partial",
-            ) from None
+            # Attachment/refresh can start native work before an exception is
+            # raised, including a later metadata failure. Retain the dispatch
+            # and shutdown gate until the fresh document's barrier settles.
+            return Pending(
+                self,
+                target["document_id"],
+                {},
+                error=BridgeError(
+                    "CREATE_FAILED",
+                    "The layer was attached but initialization failed."
+                    if attached
+                    else "Krita could not confirm attachment of the new paint layer.",
+                    effect="partial" if attached else "unknown",
+                ),
+            )
 
     def _paint_targets(self, target, params, coordinates):
         document = self._document(target["document_id"])
