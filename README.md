@@ -10,8 +10,9 @@ Inspect documents, paint with Krita's native brushes, preview the canvas, and sa
 
 - Document/layer inspection and creation, preset search, native paths and lines with endpoint pressure.
 - Document activation, rectangle/polygon selections, and native cubic Bézier paths.
-- Layer visibility/name/opacity, copying, ordering, and bounded affine transforms for reference overlays.
-- Inline whole-canvas/region PNG previews, bounded image import/open, layered `.kra` saves, and PNG export.
+- Layer/group/mask organization, compositing, copying, ordering, merging, and bounded affine transforms.
+- Selection combination/refinement, canvas transforms, native shapes, raster fills/erasing, and single-step undo/redo.
+- Inline whole-canvas/region/layer PNG previews, color and brush inspection, bounded image import/open, layered `.kra` saves, and PNG export.
 - Optional [AI Diffusion generation](docs/usage.md#krita-ai-diffusion): configure settings, regions and control/reference layers, generate, inspect results, and apply as a new layer.
 
 ## Install

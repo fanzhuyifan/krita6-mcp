@@ -122,7 +122,7 @@ A `bridge_sequence` counts dispatched mutation commands reaching a terminal resu
 
 ## Native painting and visual feedback
 
-Use Krita's public `Node.paintPath`, `paintLine`, and later shape methods. After selecting a preset, set size, opacity, managed foreground color, and explicit baseline state: eraser off, flow 1, normal blending, rotation 0, global alpha lock off, and pressure enabled. Verify those controls for the supported engine; reject unsupported state rather than inherit an eraser or lock that changes the operation. The [6.0.3 View implementation](https://raw.githubusercontent.com/KDE/krita/v6.0.3/libs/libkis/View.cpp) and local bindings expose these controls. Require the requested document to be the active view for painting in v1. If it is not, return `TARGET_NOT_ACTIVE` instead of borrowing another document's brush context.
+Use Krita's public `Node.paintPath`, `paintLine`, `paintRectangle`, and `paintEllipse` methods. After selecting a preset, set size, opacity, managed foreground color, and explicit baseline state: eraser off, flow 1, normal blending, rotation 0, global alpha lock off, and pressure enabled. Verify those controls for the supported engine; reject unsupported state rather than inherit an eraser or lock that changes the operation. The [6.0.3 View implementation](https://raw.githubusercontent.com/KDE/krita/v6.0.3/libs/libkis/View.cpp) and local bindings expose these controls. Require the requested document to be the active view for painting in v1. If it is not, return `TARGET_NOT_ACTIVE` instead of borrowing another document's brush context.
 
 Save the originating view settings. Prefer immediate restoration after the native helper captures its resource snapshot, if the spike verifies this. If restoration must be deferred, only restore the same still-live originating view, and only settings still matching bridge-applied values; preserve newer user choices and report skipped restoration. Preset changes can affect multiple settings, so restore a coupled group only when its full observed state still matches. Do not restore into whichever view happens to be active later.
 
@@ -130,7 +130,7 @@ Save the originating view settings. Prefer immediate restoration after the nativ
 | --- | --- | --- |
 | `paint_path` | Convert bounded image-space points to a `QPainterPath`, use brush stroke style and no fill | Native path API has no per-point pressure/timing input; do not advertise pressure samples |
 | `paint_line` | Native line with endpoint pressures in `[0,1]` | Local 6.0.3 stub requires `QPoint`; accept integer image coordinates initially |
-| Native shapes, later | Typed rectangles, ellipses, polygons with explicit fill/stroke | Validate styles and brush engines before advertising support |
+| Native shapes | Typed rectangles/ellipses with brush outline and optional foreground fill | Validated with the reference pixel-brush preset; additional shapes/styles require further evidence |
 
 Do not approximate a continuous pressure stroke by calling `paintLine` for every segment without exposing the difference: each call creates a separate native stroke and may reset brush dynamics and add a separate undo entry. Continuous variable-pressure strokes are a later capability that may require upstream API work. The [Node API](https://api.kde.org/legacy/krita/html/classNode.html) and [6.0.3 native implementation](https://raw.githubusercontent.com/KDE/krita/v6.0.3/libs/libkis/Node.cpp) are the source baseline; local stubs and live results take precedence for the tested build.
 
