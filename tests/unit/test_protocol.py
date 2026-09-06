@@ -97,6 +97,9 @@ def test_catalog_samples_cover_every_command():
     doc = {"document_id": "doc-1"}
     brush = {"preset_id": "brush-1", "size_px": 1, "opacity": 1, "color": "#AABBCC"}
     samples = {
+        "configure_diffusion": (doc, {"seed": 42}),
+        "set_diffusion_controls": (doc, {"controls": []}),
+        "set_diffusion_region": (doc, {"node_id": "node-1", "positive_prompt": "subject"}),
         "list_documents": ({}, {}),
         "inspect_document": (doc, {}),
         "get_preview": (doc, {}),
@@ -137,7 +140,7 @@ def test_catalog_samples_cover_every_command():
         "export_png": (doc, {"root": "output", "path": "scratch.png"}),
     }
     assert set(samples) == COMMANDS
-    assert len(MUTATIONS) == 18
+    assert len(MUTATIONS) == 21
     for command, (target, params) in samples.items():
         normalized = validate_request(request(command, target=target, params=params), "instance-a")
         assert normalized["command"] == command

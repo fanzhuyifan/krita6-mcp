@@ -53,7 +53,7 @@ async def scenario(base, instance_id):
         }
         listing = await client.list_tools()
         tools = listing.tools if hasattr(listing, "tools") else listing
-        assert len(tools) == 32
+        assert len(tools) == 35
 
         async def read(name, **arguments):
             response = await client.call_tool(name, {"instance_id": instance_id, **arguments})
@@ -99,6 +99,99 @@ async def scenario(base, instance_id):
             await asyncio.sleep(0.05)
         fixture = json.loads((base / "fixture-report.json").read_text())
         assert fixture["passed"], fixture
+        config_checks = {}
+        native = await read("krita_inspect_document", **target)
+        node_id = native["active_node_id"]
+        assert status["configuration_control"] is True
+
+        async def mutate(name, operation_id, **params):
+            args = {**target, "instance_id": instance_id, "operation_id": operation_id, **params}
+            first = await client.call_tool(name, args)
+            assert not first.is_error, first.structured_content
+            second = await client.call_tool(name, args)
+            assert first.structured_content == second.structured_content
+            assert first.structured_content["state"] == "succeeded"
+            return first.structured_content["result"]
+
+        await mutate(
+            "krita_configure_diffusion",
+            "configure-settings",
+            positive_prompt="Configured root",
+            negative_prompt="noise",
+            strength=0.72,
+            seed=42,
+            fixed_seed=True,
+            batch_count=3,
+            region_only=True,
+            resolution_multiplier=0.75,
+            inpaint_mode="custom",
+            use_inpaint=False,
+            use_prompt_focus=True,
+        )
+        observed = (await read("krita_inspect_diffusion_document", **target))["model"]
+        assert observed["positive_prompt"] == "Configured root"
+        assert observed["negative_prompt"] == "noise"
+        assert observed["strength"] == 0.72 and observed["seed"] == 42
+        assert observed["fixed_seed"] and observed["batch_count"] == 3 and observed["region_only"]
+        assert observed["resolution_multiplier"] == 0.75
+        assert not observed["use_inpaint"] and observed["use_prompt_focus"]
+        assert observed["canvas_context"]["inpaint_mode"] == "custom"
+        config_checks["persistent_settings_and_duplicate_ids"] = True
+        controls = [
+            {"node_id": node_id, "mode": "scribble", "strength": 0.8, "start": 0.2, "end": 0.9}
+        ]
+        await mutate("krita_set_diffusion_controls", "root-controls", controls=controls)
+        await mutate(
+            "krita_set_diffusion_region",
+            "create-region",
+            node_id=node_id,
+            positive_prompt="Regional subject",
+        )
+        await mutate(
+            "krita_set_diffusion_controls",
+            "region-controls",
+            controls=controls,
+            region_node_id=node_id,
+        )
+        context = (await read("krita_inspect_diffusion_document", **target))["model"][
+            "canvas_context"
+        ]
+        assert len(context["control_layers"]) == len(context["regions"]) == 1
+        assert context["regions"][0]["positive_prompt"] == "Regional subject"
+        assert context["regions"][0]["linked_node_ids"] == [node_id]
+        for entry in [context["control_layers"][0], context["regions"][0]["control_layers"][0]]:
+            assert all(entry[key] == value for key, value in controls[0].items()), entry
+        config_checks["root_and_region_controls_and_duplicate_ids"] = True
+        await mutate(
+            "krita_set_diffusion_region",
+            "update-region",
+            node_id=node_id,
+            positive_prompt="Updated subject",
+        )
+        context = (await read("krita_inspect_diffusion_document", **target))["model"][
+            "canvas_context"
+        ]
+        assert (
+            len(context["regions"]) == 1
+            and context["regions"][0]["positive_prompt"] == "Updated subject"
+        )
+        await mutate("krita_set_diffusion_controls", "clear-root-controls", controls=[])
+        await mutate("krita_set_diffusion_region", "remove-region", node_id=node_id, remove=True)
+        context = (await read("krita_inspect_diffusion_document", **target))["model"][
+            "canvas_context"
+        ]
+        assert context["control_layers"] == context["regions"] == []
+        config_checks["update_clear_remove"] = True
+        # Ask the native fixture to independently verify pixels, layers and job state.
+        (base / "verify-configuration").touch()
+        deadline = time.monotonic() + 10
+        while not (base / "configuration-report.json").exists():
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Configuration fixture did not finish")
+            await asyncio.sleep(0.05)
+        checked = json.loads((base / "configuration-report.json").read_text())
+        assert checked["passed"], checked
+        config_checks.update(checked["checks"])
         document.pop("document_id", None)
         return {
             "passed": True,
@@ -117,6 +210,7 @@ async def scenario(base, instance_id):
                 "paginated_jobs": True,
                 "nullable_plugin_job_id": True,
                 **fixture["checks"],
+                **config_checks,
             },
         }
 

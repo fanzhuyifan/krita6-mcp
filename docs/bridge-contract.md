@@ -22,6 +22,9 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | inspect_diffusion_document | document_id | empty |
 | list_diffusion_jobs | document_id | offset: int=0 (0..2147483647), limit: int=50 (1..100) |
 | list_diffusion_styles | empty | empty |
+| configure_diffusion | document_id | nonempty patch: positive_prompt/negative_prompt: str (0..4096), strength: finite number (0.01..1), seed: int (0..4294967295), fixed_seed/region_only/use_inpaint/use_prompt_focus: bool, style_id: identifier, batch_count: int (1..16), resolution_multiplier: finite number (0.25..2), inpaint_mode: typed enum |
+| set_diffusion_region | document_id | node_id, positive_prompt: str (0..4096) unless remove: bool=true; remove defaults false; removal forbids prompt |
+| set_diffusion_controls | document_id | controls: list (0..64) of {node_id, mode, strength: finite number=1 (0..2, steps of 0.02), start: finite number=0 (0..1), end: finite number=1 (start..1)}; optional region_node_id |
 | generate_diffusion | document_id | positive_prompt: str (1..4096), negative_prompt: str="" (0..4096), strength: finite number=1 (0.01..1), seed: int=0 (0..4294967295), style_id: optional identifier |
 | get_diffusion_generation | document_id | generation_id |
 | get_diffusion_result | document_id | generation_id, result_id, max_edge: int=1024 (32..1024) |
@@ -46,7 +49,7 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | save_document | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 | export_png | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 
-There are eighteen mutation commands: the eight original authoring/diffusion mutations plus activation, selection clearing/replacement, layer properties/copying/moving/transforms, document opening, image import, and Bézier painting. Eleven commands are reads, including region preview. The MCP catalog adds status and operation lookup/cancellation for 32 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
+There are twenty-one mutation commands: three diffusion configuration commands and the eight original authoring/diffusion mutations plus activation, selection clearing/replacement, layer properties/copying/moving/transforms, document opening, image import, and Bézier painting. Eleven commands are reads, including region preview. The MCP catalog adds status and operation lookup/cancellation for 35 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
 
 ## Operation ledger
 

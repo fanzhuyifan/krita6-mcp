@@ -152,7 +152,7 @@ File tools use configured input/output roots, canonical containment checks, boun
 
 ## Initial MCP surface
 
-Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 24 core tools and eight optional AI Diffusion tools, for 32 total. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
+Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 24 core tools and eleven optional AI Diffusion tools, for 35 total. The configuration tools persist bounded Generate settings and configure conditioning against explicit layer identities; [integration decisions](diffusion-integration.md#persistent-configuration) define their source and mutation boundary. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
 
 | Tool | Contract |
 | --- | --- |

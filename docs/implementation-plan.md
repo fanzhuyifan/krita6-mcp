@@ -2,7 +2,7 @@
 
 Updated 2026-09-06 for initial implementation 0.1.0.
 
-The core native workflow passes on Linux/Krita 6.0.3. The 32-tool MCP catalog includes eight optional AI Diffusion tools, with generation tied to a pinned Qt6 development plugin and a connected local backend. The bridge has automated protocol, transport, ledger, host-guard, diffusion-reader, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
+The core native workflow passes on Linux/Krita 6.0.3. The 35-tool MCP catalog includes eleven optional AI Diffusion tools, with generation tied to a pinned Qt6 development plugin and a connected local backend. The bridge has automated protocol, transport, ledger, host-guard, diffusion-reader, and real stdio tests. See [validation evidence](validation.md) for exact coverage. The gates below remain the acceptance checklist for broader compatibility; the first successful workflow does not establish every race, brush engine, or platform scenario.
 
 ## 0. Prove the host API before building the catalog
 
@@ -40,6 +40,8 @@ Read loaded plugin status, existing document settings, and bounded job snapshots
 Submit one image through existing canvas preparation, retain owned generation/result identities, inspect the generated PNG, and apply explicitly as a new top paint layer. Suppress automatic preview/application only for owned jobs. Reject unsupported source revisions, nonlocal backends, and unsupported workspace/output modes.
 
 **Gate:** use the installed local models with disposable Krita/backend profiles. Verify duplicate submission/application IDs, prompt/settings restoration, automatic-apply suppression, selection refinement, result ownership, native completion, and application undo behavior. Record actual results in [validation](validation.md). Synthetic queue tests do not establish these mutation behaviors.
+
+**Configuration:** typed persistent settings, root/regional control lists, and single-linked prompt-region creation/update/removal now have isolated live-host evidence. See [configuration scope](diffusion-integration.md#persistent-configuration).
 
 **Next:** broader control/region combinations, disconnect/closure races in a live session, and safe backend cancellation. No arbitrary workflow or global backend interrupt is exposed.
 

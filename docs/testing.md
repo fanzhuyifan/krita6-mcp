@@ -36,13 +36,15 @@ Use the same Linux prerequisites and clean host-test environment described above
 .venv/bin/python tools/probe_diffusion.py --source /absolute/path/to/pinned/krita-ai-diffusion
 ```
 
-The probe verifies source fingerprints, loads the real plugin in an isolated profile, and inserts synthetic job records into its actual queue for inspection. Automatic updates are disabled and cloud mode has an empty token, which the pinned plugin handles without creating a backend client. No images are generated. This test proves observation behavior, not generation or backend compatibility.
+The probe verifies source fingerprints, loads the real plugin in an isolated profile, and inserts synthetic job records into its actual queue for inspection. Automatic updates are disabled and cloud mode has an empty token, which the pinned plugin handles without creating a backend client. No images are generated. After verifying observation, this probe configures persistent settings, root/regional controls, and region create/update/remove through real MCP. It independently checks preserved pixels/layers/selection/jobs, duplicate IDs, and native settings. It proves configuration behavior on the pinned add-on, not generation or control-model backend compatibility.
 
 ## Recording results
 
 Record the exact Krita, Qt/PyQt, Python, platform, and relevant plugin/preset versions with the checks performed. State what remains untested. Retain only small, deliberately sanitized evidence in `docs/validation/`; never commit tokens, discovery files, personal artwork, environments, generated build artifacts, or raw profile logs.
 
 ## AI Diffusion generation
+
+This probe also verifies persistent selection of a supported style through MCP before recording its native generation baseline.
 
 The generation probe requires the pinned Qt6 add-on plus an installed managed ComfyUI server with `dreamshaper_8.safetensors` and the add-on’s required models/custom nodes. It does not download or install models. Use trusted local source and server paths:
 

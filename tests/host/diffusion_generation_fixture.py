@@ -126,6 +126,7 @@ class DiffusionGenerationFixture(Extension):
                     )
                 )
             for phase in (
+                "configured",
                 "before-apply-0",
                 "after-apply-0",
                 "undo-0",

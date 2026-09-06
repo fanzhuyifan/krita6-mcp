@@ -31,7 +31,7 @@ Generation calls the add-on’s existing preparation logic:
 - Existing linked regions contribute their regional prompts and masks.
 - Existing control/reference layers provide conditioning, including region-specific controls.
 
-Document inspection exposes bounded settings, selection bounds, regional prompts, and control/reference layer links without activating them. MCP does not yet create or edit selections, regions, or control layers; configure those in the add-on. Ordinary generation is supported; live, animation, custom workflow, edit-model, and layered-output modes are excluded.
+Document inspection exposes bounded settings, selection bounds, regional prompts, and control/reference layer links without activating them. MCP can configure root settings, linked regions, and control lists as described below; the core selection tools configure canvas selections. Ordinary generation is supported; live, animation, custom workflow, edit-model, and layered-output modes are excluded.
 
 The request supplies the root/global prompts, which the add-on combines with configured regional and style prompts; it does not replace each region’s prompt. The request temporarily overrides prompt/style/strength/seed settings while preparing input, then restores them before yielding the GUI thread. Canvas layer visibility is restored if preparation fails. Result placement uses the captured generation bounds; changing document geometry or color settings invalidates application. Intervening ordinary painting is allowed, so inspect the current canvas before applying an older result.
 
@@ -48,3 +48,17 @@ Generation records belong to an exact document model and job. Result handles ide
 `krita_list_diffusion_jobs` remains an observational view of all jobs, including user-created ones; it does not grant mutation ownership. Upstream job IDs may be null, and `cancelled` can include failures or queue repair. Model-level progress is not job-specific.
 
 There is no backend cancellation tool. `krita_cancel_operation` cancels only unstarted bridge work; after submission it cannot interrupt rendering. Upstream’s global interrupt and broad queue cancellation cannot safely stand in for cancellation of one bridge-owned job. Pending generation may continue after the MCP client or bridge stops; inspect the add-on before starting a new session and intentionally resubmitting.
+
+## Persistent configuration
+
+Three mutation tools configure the existing active Generate model without submitting jobs:
+
+- `krita_configure_diffusion` patches supplied root prompts, strength, seed/fixed seed, listed style, batch count, region-only behavior, resolution multiplier, inpaint mode, and custom inpaint/prompt-focus flags. Omitted fields remain unchanged; empty prompts clear them. Style selection requires the connected local backend and rejects edit architectures.
+- `krita_set_diffusion_region` creates or updates a prompt region linked directly to an existing paint/group layer. `remove=true` deletes the region and its controls, preserving artwork. Multiple matching regions or a region linked to multiple layers are rejected, so a single layer handle never silently edits other links. Creating a region selects it in the add-on, matching its normal insertion behavior.
+- `krita_set_diffusion_controls` replaces the complete root conditioning list, or one region's list selected by `region_node_id`. An empty list clears it. Each entry specifies an existing image layer, a typed mode, normalized strength 0..2 in increments of 0.02, and start/end fractions satisfying 0 <= start <= end <= 1. Custom strength is enabled. There are at most 32 regions and 64 controls across the generation root. Active preprocessor jobs prevent replacing their controls or editing/removing their region.
+
+Configuration uses the same reviewed source fingerprints as generation and runs entirely on the GUI thread. It works without a connected backend except for style selection. Disconnected `is_supported` is only the add-on's observed flag, not proof that models are installed; re-inspect after connecting. Control preprocessors, backend lifecycle/cancellation, live/animation/custom/edit workspaces, style-file editing, and arbitrary workflow parameters remain outside these tools.
+
+These are persistent add-on model changes and can affect document annotations/modified state; there is no guaranteed undo transaction. Reuse the operation ID after an uncertain outcome. Validation resolves all requested layer/style targets before configuration; setter/signal failures after mutation begins report `effect: partial`, with inspection required before a new operation. Snapshot indices are never mutation identities.
+
+`krita_generate_diffusion` retains its explicit request contract: it supplies root prompts, strength and seed temporarily and requests one image, regardless of persistent batch settings. Persistent region, control, resolution, and inpaint configuration feeds the add-on's normal preparation. Configuration alone does not prove that every control mode/model combination can generate; see the live evidence and its limits.

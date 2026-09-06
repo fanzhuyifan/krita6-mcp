@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import QApplication
 from krita import InfoObject, Krita, ManagedColor, Preset
 
 from .protocol import BridgeError, COMMANDS
+from .diffusion_configuration import DiffusionConfigurator
 from .diffusion import DiffusionReader
 from .diffusion_generation import DiffusionGenerator
 from .output_paths import resolve_output_path
@@ -144,6 +145,7 @@ class KritaHost(EditingMixin):
                 "ai_diffusion": {
                     **self._diffusion.capabilities(),
                     **self._diffusion_generator.capabilities(),
+                    **DiffusionConfigurator(self._diffusion_generator).capabilities(),
                 },
             },
         }
@@ -182,6 +184,9 @@ class KritaHost(EditingMixin):
             "paint_line": self._paint_line,
             "save_document": self._save_document,
             "export_png": self._export_png,
+            "configure_diffusion": self._configure_diffusion,
+            "set_diffusion_controls": self._set_diffusion_controls,
+            "set_diffusion_region": self._set_diffusion_region,
             "diffusion_status": self._diffusion_status,
             "inspect_diffusion_document": self._inspect_diffusion_document,
             "list_diffusion_jobs": self._list_diffusion_jobs,
@@ -194,8 +199,30 @@ class KritaHost(EditingMixin):
             raise BridgeError("UNKNOWN_COMMAND", "This host does not support the command.")
         return handlers[command](request.get("target", {}), request.get("params", {}))
 
+    def _configure_diffusion(self, target, params):
+        document = self._diffusion_target(target["document_id"])
+        return DiffusionConfigurator(self._diffusion_generator).configure(
+            "configure_diffusion", target["document_id"], document, params
+        )
+
+    def _set_diffusion_controls(self, target, params):
+        document = self._diffusion_target(target["document_id"])
+        return DiffusionConfigurator(self._diffusion_generator).configure(
+            "set_diffusion_controls", target["document_id"], document, params
+        )
+
+    def _set_diffusion_region(self, target, params):
+        document = self._diffusion_target(target["document_id"])
+        return DiffusionConfigurator(self._diffusion_generator).configure(
+            "set_diffusion_region", target["document_id"], document, params
+        )
+
     def _diffusion_status(self, target, params):
-        return {**self._diffusion.status(), **self._diffusion_generator.capabilities()}
+        return {
+            **self._diffusion.status(),
+            **self._diffusion_generator.capabilities(),
+            **DiffusionConfigurator(self._diffusion_generator).capabilities(),
+        }
 
     def _list_diffusion_styles(self, target, params):
         return self._diffusion_generator.list_styles()
@@ -265,6 +292,7 @@ class KritaHost(EditingMixin):
         return {
             **self._diffusion.inspect_document(target["document_id"], document),
             **self._diffusion_generator.capabilities(),
+            **DiffusionConfigurator(self._diffusion_generator).capabilities(),
         }
 
     def _list_diffusion_jobs(self, target, params):
@@ -274,6 +302,7 @@ class KritaHost(EditingMixin):
                 target["document_id"], document, params.get("offset", 0), params.get("limit", 50)
             ),
             **self._diffusion_generator.capabilities(),
+            **DiffusionConfigurator(self._diffusion_generator).capabilities(),
         }
 
     def _reconcile_documents(self):

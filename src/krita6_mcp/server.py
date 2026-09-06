@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 
 from mcp.server import MCPServer
 from mcp.types import CallToolResult, ImageContent, TextContent, ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from krita6_bridge.protocol import BridgeError
 from krita6_mcp.bridge_client import BridgeClient
@@ -38,6 +38,46 @@ BezierSegment = tuple[Point, Point, Point]
 BezierSegments = Annotated[list[BezierSegment], Field(min_length=1, max_length=256)]
 RelativePath = Annotated[str, Field(min_length=1, max_length=4096, strict=True)]
 Boolean = Annotated[bool, Field(strict=True)]
+ControlMode = Literal[
+    "reference",
+    "style",
+    "composition",
+    "face",
+    "inpaint",
+    "universal",
+    "scribble",
+    "line_art",
+    "soft_edge",
+    "canny_edge",
+    "depth",
+    "normal",
+    "pose",
+    "segmentation",
+    "blur",
+    "stencil",
+    "hands",
+]
+InpaintMode = Literal[
+    "automatic",
+    "fill",
+    "expand",
+    "add_object",
+    "remove_object",
+    "replace_background",
+    "custom",
+]
+Prompt = Annotated[str, Field(max_length=4096, strict=True)]
+
+
+class DiffusionControl(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    node_id: Identifier
+    mode: ControlMode
+    strength: Annotated[float, Field(ge=0, le=2, allow_inf_nan=False, strict=True)] = 1
+    start: Opacity = 0
+    end: Opacity = 1
+
+
 READ_ONLY = ToolAnnotations(
     read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
@@ -156,6 +196,88 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
     async def krita_list_diffusion_styles(instance_id: Identifier) -> CallToolResult:
         """List available AI Diffusion styles and their handles without changing the current style."""
         return await execute("list_diffusion_styles", instance_id)
+
+    @server.tool(annotations=MUTATION)
+    async def krita_configure_diffusion(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        positive_prompt: Prompt | None = None,
+        negative_prompt: Prompt | None = None,
+        strength: Annotated[float, Field(ge=0.01, le=1, allow_inf_nan=False, strict=True)]
+        | None = None,
+        seed: Annotated[int, Field(ge=0, le=2**32 - 1, strict=True)] | None = None,
+        fixed_seed: Boolean | None = None,
+        style_id: Identifier | None = None,
+        batch_count: Annotated[int, Field(ge=1, le=16, strict=True)] | None = None,
+        region_only: Boolean | None = None,
+        resolution_multiplier: Annotated[
+            float, Field(ge=0.25, le=2, allow_inf_nan=False, strict=True)
+        ]
+        | None = None,
+        inpaint_mode: InpaintMode | None = None,
+        use_inpaint: Boolean | None = None,
+        use_prompt_focus: Boolean | None = None,
+    ) -> CallToolResult:
+        """Persist specified Generate settings without starting a job. Omitted fields stay unchanged. Requires the pinned add-on and active document; style changes require its local backend. Generation requests still supply their own root prompts/strength/seed and request one image. Reuse operation_id on retries; no guaranteed undo."""
+        params = {
+            key: value
+            for key, value in {
+                "positive_prompt": positive_prompt,
+                "negative_prompt": negative_prompt,
+                "strength": strength,
+                "seed": seed,
+                "fixed_seed": fixed_seed,
+                "style_id": style_id,
+                "batch_count": batch_count,
+                "region_only": region_only,
+                "resolution_multiplier": resolution_multiplier,
+                "inpaint_mode": inpaint_mode,
+                "use_inpaint": use_inpaint,
+                "use_prompt_focus": use_prompt_focus,
+            }.items()
+            if value is not None
+        }
+        return await execute(
+            "configure_diffusion", instance_id, operation_id, {"document_id": document_id}, params
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_set_diffusion_controls(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        controls: Annotated[list[DiffusionControl], Field(max_length=64)],
+        region_node_id: Identifier | None = None,
+    ) -> CallToolResult:
+        """Replace the root or single-linked region's entire conditioning list; [] clears it. Entries reference existing image layers, with mode, strength 0..2 in steps of 0.02, and 0<=start<=end<=1. Does not generate control maps or images. Inspect is_supported before generation. Requires active Generate document. Reuse operation_id; no guaranteed undo."""
+        params = {"controls": [control.model_dump() for control in controls]}
+        if region_node_id is not None:
+            params["region_node_id"] = region_node_id
+        return await execute(
+            "set_diffusion_controls",
+            instance_id,
+            operation_id,
+            {"document_id": document_id},
+            params,
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_set_diffusion_region(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        node_id: Identifier,
+        positive_prompt: Prompt | None = None,
+        remove: Boolean = False,
+    ) -> CallToolResult:
+        """Create/update a prompt region linked directly to an existing paint/group layer, or remove that region and its controls without deleting artwork. A prompt is required unless removing. Rejects ambiguous/multiple links. Requires active Generate document. Reuse operation_id; no guaranteed undo."""
+        params = {"node_id": node_id, "remove": remove}
+        if positive_prompt is not None:
+            params["positive_prompt"] = positive_prompt
+        return await execute(
+            "set_diffusion_region", instance_id, operation_id, {"document_id": document_id}, params
+        )
 
     @server.tool(annotations=MUTATION)
     async def krita_generate_diffusion(

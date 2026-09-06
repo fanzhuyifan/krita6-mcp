@@ -367,7 +367,13 @@ def test_optional_metadata_failure_preserves_basic_inspection_without_details(
     assert result["document_status"] == "tracked"
     assert result["model"]["positive_prompt"] == "garden"
     assert result["model"]["seed"] is None
-    assert set(result["model"]["unavailable_fields"]) == {"seed", "style_id"}
+    assert set(result["model"]["unavailable_fields"]) == {
+        "seed",
+        "style_id",
+        "resolution_multiplier",
+        "use_inpaint",
+        "use_prompt_focus",
+    }
     context = result["model"]["canvas_context"]
     assert context["selection_bounds"] is None
     assert set(context["unavailable_fields"]) == {

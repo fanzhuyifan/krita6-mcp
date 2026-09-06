@@ -189,6 +189,16 @@ async def scenario(base, instance_id):
         _, styles = await call("krita_list_diffusion_styles")
         style = next(s for s in styles["styles"] if s["name"] == "Digital Artwork (SD1.5)")
         before = json.loads((base / "fixture-ready.json").read_text())["snapshot"]
+        # Configure a supported style before recording the native generation baseline.
+        arguments = dict(**target, operation_id="configure-style", style_id=style["style_id"])
+        _, configured = await call("krita_configure_diffusion", **arguments)
+        _, repeated = await call("krita_configure_diffusion", **arguments)
+        assert configured == repeated
+        _, observed = await call("krita_inspect_diffusion_document", **target)
+        assert observed["model"]["style_id"] == style["style_id"]
+        before = await fixture_phase(base, "configured")
+        assert before["settings"]["style_name"] == style["name"]
+        checks["persistent_style_and_duplicate_id"] = True
         generation_reports = []
 
         for index, strength in enumerate((1.0, 0.65)):

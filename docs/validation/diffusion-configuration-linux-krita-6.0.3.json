@@ -1,0 +1,186 @@
+{
+  "passed": true,
+  "reference_commit": "dda58d1c63e361207ccec085efbc34dbd32f1654",
+  "source_kind": "unreleased Krita 6 development snapshot",
+  "generated_images": false,
+  "host": {
+    "krita_version": "6.0.3",
+    "qt_version": "6.11.2",
+    "pyqt_version": "6.11.0",
+    "python_version": "3.14.7",
+    "platform": "Linux",
+    "display_backend": "xcb",
+    "plugin_version": "0.1.0",
+    "bridge_protocol": 1
+  },
+  "fixture_jobs": "Synthetic records in the real upstream JobQueue; no backend execution",
+  "status": {
+    "availability": "available",
+    "plugin_version": "1.53.0",
+    "generation_control": false,
+    "connection_control": false,
+    "backend_health_check": false,
+    "connection_state": "auth_missing",
+    "connection_error_present": false,
+    "available_model_count": null,
+    "tracked_document_count": 1,
+    "generation_unavailable_reason": "DIFFUSION_NOT_CONNECTED",
+    "configuration_control": true,
+    "read_only": false,
+    "configuration_scope": "generation_root_and_linked_regions",
+    "configuration_requires_backend": false
+  },
+  "observed_job_states": [
+    "queued",
+    "executing",
+    "finished",
+    "cancelled"
+  ],
+  "checks": {
+    "tool_count": 35,
+    "real_plugin_loaded": true,
+    "document_inspection": true,
+    "paginated_jobs": true,
+    "nullable_plugin_job_id": true,
+    "preserved_pixels": true,
+    "preserved_filename": true,
+    "preserved_modified": true,
+    "preserved_models": true,
+    "preserved_selection": true,
+    "preserved_jobs": true,
+    "preserved_positive": true,
+    "preserved_negative": true,
+    "preserved_strength": true,
+    "preserved_batch_count": true,
+    "preserved_style_name": true,
+    "preserved_layers": true,
+    "preserved_connection": true,
+    "preserved_client_absent": true,
+    "no_generation_backend": true,
+    "persistent_settings_and_duplicate_ids": true,
+    "root_and_region_controls_and_duplicate_ids": true,
+    "update_clear_remove": true,
+    "configuration_preserved_pixels": true,
+    "configuration_preserved_filename": true,
+    "configuration_preserved_models": true,
+    "configuration_preserved_selection": true,
+    "configuration_preserved_jobs": true,
+    "configuration_preserved_layers": true,
+    "configuration_preserved_connection": true,
+    "configuration_preserved_client_absent": true,
+    "native_configured_prompt": true,
+    "native_configured_seed": true,
+    "native_cleared_controls_and_regions": true
+  },
+  "upstream_files_sha256": {
+    "ai_diffusion/__init__.py": "ca760fdad688fbf8d84150d82f6e7cec0b5ee1ec03fe2fd5c636c968b4ef772e",
+    "ai_diffusion/extension.py": "b39c47d683891a221da2cdfc79efb24d86c99975f76b53919e506b794c63bf93",
+    "ai_diffusion/document.py": "d3fab9a0f67456a033b543d82e577b17e52bb4c3a59001ea9f66877bbd520364",
+    "ai_diffusion/model/root.py": "7449ddc8cb465767f57d52092d2917c45ead8ab5d34633272f5d2fc969d1471d",
+    "ai_diffusion/model/model.py": "e662dc70fe54c7f561467b7081874095cea41d146d19b4e67bac807c20966f9d",
+    "ai_diffusion/model/jobs.py": "f7d282cafa44bfe4524cf4559f49dc87291a0338d7b31e7e9f8dd78450a79cae",
+    "ai_diffusion/model/connection.py": "629665d8587e46b88bd58a8dc34f993f774b7ef8e4bfc3f6c031d436c8fde162"
+  },
+  "automated_tests": {
+    "passed": 465,
+    "command": ".venv/bin/pytest -q tests/unit tests/integration"
+  },
+  "connected_style_and_generation": {
+    "passed": true,
+    "reference_commit": "dda58d1c63e361207ccec085efbc34dbd32f1654",
+    "host": {
+      "krita_version": "6.0.3",
+      "qt_version": "6.11.2",
+      "pyqt_version": "6.11.0",
+      "python_version": "3.14.7",
+      "platform": "Linux"
+    },
+    "checks": {
+      "local_generation_capability": true,
+      "persistent_style_and_duplicate_id": true,
+      "generation_0_canvas_context": true,
+      "minimum_preview_size": true,
+      "generation_0_applied_layer_handle": true,
+      "generation_0_native_undo_redo": true,
+      "generation_0_duplicate_submitted_once": true,
+      "generation_0_canvas_unchanged_until_apply": true,
+      "generation_0_settings_preserved": true,
+      "generation_0_inline_png": true,
+      "generation_0_duplicate_apply_once": true,
+      "generation_1_canvas_context": true,
+      "generation_1_applied_layer_handle": true,
+      "selection_refine_preserves_far_corner": true,
+      "generation_1_native_undo_redo": true,
+      "generation_1_duplicate_submitted_once": true,
+      "generation_1_canvas_unchanged_until_apply": true,
+      "generation_1_settings_preserved": true,
+      "generation_1_inline_png": true,
+      "generation_1_duplicate_apply_once": true
+    },
+    "generations": [
+      {
+        "workflow_kind": "generate",
+        "has_mask": false,
+        "dimensions": [
+          512,
+          512
+        ],
+        "png_sha256": "e4ec9e15cc35bbb69469db2c124667aa02d96b7f65adc3e91131482a093c6c72",
+        "preview": {
+          "mime_type": "image/png",
+          "size_bytes": 394232,
+          "source_bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 512,
+            "height": 512
+          },
+          "preview_width": 512,
+          "preview_height": 512,
+          "scale": {
+            "x": 1.0,
+            "y": 1.0
+          },
+          "color": {
+            "conversion": "AI Diffusion result PNG",
+            "preview_profile": "unspecified"
+          }
+        }
+      },
+      {
+        "workflow_kind": "refine_region",
+        "has_mask": true,
+        "dimensions": [
+          288,
+          288
+        ],
+        "png_sha256": "3908448da1a5a82a0801677a936c533d6974475371e6b793385fd579c1adfc70",
+        "preview": {
+          "mime_type": "image/png",
+          "size_bytes": 137440,
+          "source_bounds": {
+            "x": 112,
+            "y": 112,
+            "width": 288,
+            "height": 288
+          },
+          "preview_width": 288,
+          "preview_height": 288,
+          "scale": {
+            "x": 1.0,
+            "y": 1.0
+          },
+          "color": {
+            "conversion": "AI Diffusion result PNG",
+            "preview_profile": "unspecified"
+          }
+        }
+      }
+    ],
+    "backend": {
+      "comfyui_version": "0.33.3",
+      "pytorch_version": "2.13.0+cu130",
+      "python_version": "3.12.14 (main, Sep  1 2026, 14:16:52) [Clang 22.1.3 ]"
+    }
+  }
+}

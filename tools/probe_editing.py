@@ -112,7 +112,7 @@ async def scenario(base, instance_id):
         _, host = await call("krita_status")
         listing = await client.list_tools()
         catalog = listing.tools if hasattr(listing, "tools") else listing
-        assert len(catalog) == 32
+        assert len(catalog) == 35
         checks["tool_count"] = len(catalog)
         _, source = await call(
             "krita_create_document",

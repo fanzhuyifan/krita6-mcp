@@ -85,7 +85,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             listed = await client.list_tools()
             tools = listed.tools if hasattr(listed, "tools") else listed
             by_name = {tool.name: tool for tool in tools}
-            assert len(by_name) == 32
+            assert len(by_name) == 35
             assert by_name["krita_status"].annotations.read_only_hint
             diffusion_tools = {
                 "krita_diffusion_status",
@@ -95,7 +95,13 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
                 "krita_get_diffusion_generation",
                 "krita_get_diffusion_result",
             }
-            diffusion_mutations = {"krita_generate_diffusion", "krita_apply_diffusion_result"}
+            diffusion_mutations = {
+                "krita_generate_diffusion",
+                "krita_apply_diffusion_result",
+                "krita_configure_diffusion",
+                "krita_set_diffusion_controls",
+                "krita_set_diffusion_region",
+            }
             assert {name for name in by_name if "diffusion" in name} == (
                 diffusion_tools | diffusion_mutations
             )

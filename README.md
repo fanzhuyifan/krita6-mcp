@@ -12,7 +12,7 @@ Inspect documents, paint with Krita's native brushes, preview the canvas, and sa
 - Document activation, rectangle/polygon selections, and native cubic Bézier paths.
 - Layer visibility/name/opacity, copying, ordering, and bounded affine transforms for reference overlays.
 - Inline whole-canvas/region PNG previews, bounded image import/open, layered `.kra` saves, and PNG export.
-- Optional [AI Diffusion generation](docs/usage.md#krita-ai-diffusion): use existing canvas conditioning, inspect results, and apply as a new layer.
+- Optional [AI Diffusion generation](docs/usage.md#krita-ai-diffusion): configure settings, regions and control/reference layers, generate, inspect results, and apply as a new layer.
 
 ## Install
 
@@ -90,3 +90,12 @@ Developed primarily with AI coding agents. Review and additional compatibility t
 [MIT](LICENSE) · Independent of KDE/Krita and Krita AI Diffusion.
 
 [Issues](https://github.com/fanzhuyifan/krita6-mcp/issues) · [Security](SECURITY.md) · [Design](docs/design.md) · [Acknowledgments](docs/research.md) · [Changelog](CHANGELOG.md)
+
+Diffusion configuration validation (isolated profile and scratch document; no backend needed):
+
+```bash
+.venv/bin/pytest -q tests/unit tests/integration
+.venv/bin/python tools/probe_diffusion.py --source /absolute/path/to/pinned/krita-ai-diffusion
+```
+
+The [testing guide](docs/testing.md) documents host prerequisites and the separate local-backend generation/style probe.

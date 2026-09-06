@@ -232,7 +232,8 @@ def test_diffusion_read_results_report_current_generation_availability(host_modu
         list_jobs=lambda *args: {"generation_control": False, "jobs": []},
     )
     host._diffusion_generator = types.SimpleNamespace(
-        capabilities=lambda: {"generation_control": True, "read_only": False}
+        capabilities=lambda: {"generation_control": True, "read_only": False},
+        _context=lambda: None,
     )
     for read in (
         host._diffusion_status,

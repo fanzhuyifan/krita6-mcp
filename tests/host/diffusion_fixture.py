@@ -17,6 +17,9 @@ class DiffusionFixture(Extension):
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.verify)
+        self.config_timer = QTimer(self)
+        self.config_timer.setInterval(100)
+        self.config_timer.timeout.connect(self.verify_configuration)
 
     def setup(self):
         QTimer.singleShot(2000, self.prepare)
@@ -110,11 +113,39 @@ class DiffusionFixture(Extension):
             after = self.snapshot()
             checks = {f"preserved_{key}": value == after[key] for key, value in self.before.items()}
             checks["no_generation_backend"] = after["client_absent"]
+            self.config_timer.start()
             (self.output / "fixture-report.json").write_text(
                 json.dumps({"passed": all(checks.values()), "checks": checks}, indent=2)
             )
         except Exception:
             self.fail()
+
+    def verify_configuration(self):
+        if not (self.output / "verify-configuration").exists():
+            return
+        self.config_timer.stop()
+        after = self.snapshot()
+        fields = [
+            "pixels",
+            "filename",
+            "models",
+            "selection",
+            "jobs",
+            "layers",
+            "connection",
+            "client_absent",
+        ]
+        checks = {
+            "configuration_preserved_" + key: after[key] == self.before[key] for key in fields
+        }
+        checks["native_configured_prompt"] = self.model.regions.positive == "Configured root"
+        checks["native_configured_seed"] = self.model.seed == 42 and self.model.fixed_seed
+        checks["native_cleared_controls_and_regions"] = (
+            len(self.model.regions.control) == len(self.model.regions) == 0
+        )
+        (self.output / "configuration-report.json").write_text(
+            json.dumps({"passed": all(checks.values()), "checks": checks}, indent=2)
+        )
 
     def fail(self):
         self.timer.stop()

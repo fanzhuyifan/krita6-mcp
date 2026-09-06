@@ -20,7 +20,7 @@ Run `uv run krita6-mcp doctor --json` from the checkout to read connection state
 
 ## Editing and retries
 
-Before editing, list documents and inspect the target. The catalog has 24 core tools and eight optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
+Before editing, list documents and inspect the target. The catalog has 24 core tools and eleven optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
 
 Native painting requires an active document view, an unlocked nonanimated paint layer, no selection, zero canvas offset, and RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc`. The supported engine is the pixel brush engine. Paths and cubic Bézier paths do not support arbitrary per-point pressure; lines accept endpoint pressure. There is no arbitrary Python/action-execution tool or MCP undo tool. Ordinary Krita undo is available for native strokes. See [validation evidence](validation.md) for the exact tested build and preset.
 
@@ -80,3 +80,19 @@ Strength below 1 refines the current canvas; an existing selection uses the add-
 `krita_list_diffusion_jobs` shows all current add-on jobs; only bridge-owned generations have retrievable/applicable MCP result handles. There is no backend cancellation tool. Cancelling a bridge submission after it has run does not stop rendering. No tool installs plugins, creates diffusion models, or connects backends. Core tools work when AI Diffusion is absent.
 
 See [integration behavior and limits](diffusion-integration.md) and the [testing guide](testing.md).
+
+### Configure diffusion conditioning
+
+Use the current instance/document handles and a native layer UUID from document inspection:
+
+```text
+krita_configure_diffusion(instance_id, operation_id="settings-1", document_id,
+    positive_prompt="A mountain landscape", fixed_seed=true, seed=42,
+    inpaint_mode="automatic")
+krita_set_diffusion_region(instance_id, operation_id="region-1", document_id,
+    node_id=subject_layer_id, positive_prompt="A snowy peak")
+krita_set_diffusion_controls(instance_id, operation_id="controls-1", document_id,
+    controls=[{node_id: reference_layer_id, mode: "depth", strength: 0.8, start: 0, end: 1}])
+```
+
+Pass `region_node_id=subject_layer_id` to configure regional controls. Passing `controls=[]` clears only the selected list. Inspect the diffusion document after configuration and after backend connection to check control support. These persistent settings do not start generation; generation calls still specify their root prompts/strength/seed explicitly. See the [configuration scope and limits](diffusion-integration.md#persistent-configuration).

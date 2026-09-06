@@ -20,6 +20,8 @@ from .editing_protocol import (
     validate_editing,
 )
 
+from .diffusion_protocol import CONFIG_COMMANDS, validate_configuration
+
 PROTOCOL_VERSION = 1
 PLUGIN_VERSION = "0.1.0"
 MUTATIONS = frozenset(
@@ -49,8 +51,8 @@ COMMANDS = MUTATIONS | {
 }
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
 
-MUTATIONS = MUTATIONS | EDITING_MUTATIONS
-COMMANDS = COMMANDS | EDITING_COMMANDS
+MUTATIONS = MUTATIONS | EDITING_MUTATIONS | CONFIG_COMMANDS
+COMMANDS = COMMANDS | EDITING_COMMANDS | CONFIG_COMMANDS
 
 
 def validate_request(body, instance_id):
@@ -86,6 +88,7 @@ def validate_request(body, instance_id):
         else {"document_id"}
         if c
         in DOCUMENT_COMMANDS
+        | CONFIG_COMMANDS
         | {
             "inspect_document",
             "get_preview",
@@ -105,7 +108,9 @@ def validate_request(body, instance_id):
     for k, v in target.items():
         validate_id(v, k)
     p = r.get("params", {})
-    if c in EDITING_COMMANDS:
+    if c in CONFIG_COMMANDS:
+        p = validate_configuration(c, p)
+    elif c in EDITING_COMMANDS:
         p = validate_editing(c, p)
     elif c in {
         "list_documents",

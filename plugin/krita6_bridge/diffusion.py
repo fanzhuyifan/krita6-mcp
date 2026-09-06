@@ -317,6 +317,9 @@ class DiffusionReader:
                 ("fixed_seed", lambda: _boolean(model.fixed_seed)),
                 ("edit_mode", lambda: _boolean(model.edit_mode)),
                 ("region_only", lambda: _boolean(model.region_only)),
+                ("resolution_multiplier", lambda: _number(model.resolution_multiplier, 0.25, 2)),
+                ("use_inpaint", lambda: _boolean(model.inpaint.use_inpaint)),
+                ("use_prompt_focus", lambda: _boolean(model.inpaint.use_prompt_focus)),
                 ("style_id", lambda: _style_id(model.style)),
             ):
                 _optional(detail, name, read, unavailable)
