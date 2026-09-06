@@ -23,16 +23,22 @@ class OperationLedger:
         read_limit=256,
         result_ttl=300,
         read_ttl=60,
+        result_bytes_limit=16 * 1024 * 1024,
     ):
-        if min(queue_limit, mutation_limit, read_limit) < 1 or min(result_ttl, read_ttl) <= 0:
+        if (
+            min(queue_limit, mutation_limit, read_limit, result_bytes_limit) < 1
+            or min(result_ttl, read_ttl) <= 0
+        ):
             raise ValueError("Ledger bounds must be positive")
         self.instance_id = instance_id
         self.queue_limit, self.mutation_limit = queue_limit, mutation_limit
         self.read_limit, self.result_ttl, self.read_ttl = read_limit, result_ttl, read_ttl
+        self.result_bytes_limit = result_bytes_limit
         self._clock, self._lock = clock, threading.RLock()
         self._entries, self._queue = {}, deque()
         self._draining = False
         self._sequence = 0
+        self._result_bytes = 0
 
     def _snapshot(self, entry):
         return copy.deepcopy(entry["snapshot"])
@@ -42,6 +48,28 @@ class OperationLedger:
         s["state"], s["error"] = state, error
         entry["completed"] = now
         entry["request"] = None
+
+    def _release_result_bytes(self, entry):
+        self._result_bytes -= entry.pop("result_bytes", 0)
+
+    def _expire_result(self, entry):
+        self._release_result_bytes(entry)
+        entry["snapshot"]["result"] = None
+        entry["snapshot"]["error"] = {
+            "code": "RESULT_EXPIRED",
+            "message": "Result body expired; recorded state and effect remain authoritative",
+        }
+        entry["result_expired"] = True
+
+    def _bound_results(self):
+        # Read and mutation bodies share this byte budget. Compact tombstones
+        # remain bounded by their respective entry counts, never by eviction.
+        while self._result_bytes > self.result_bytes_limit:
+            oldest = min(
+                (entry for entry in self._entries.values() if entry.get("result_bytes")),
+                key=lambda entry: entry["completed"],
+            )
+            self._expire_result(oldest)
 
     def _maintain(self):
         now = self._clock()
@@ -62,14 +90,10 @@ class OperationLedger:
                 continue
             age = now - e["completed"]
             if not e["mutation"] and age >= self.read_ttl:
+                self._release_result_bytes(e)
                 del self._entries[op]
             elif e["mutation"] and age >= self.result_ttl and not e.get("result_expired"):
-                e["snapshot"]["result"] = None
-                e["snapshot"]["error"] = {
-                    "code": "RESULT_EXPIRED",
-                    "message": "Result body expired; recorded state and effect remain authoritative",
-                }
-                e["result_expired"] = True
+                self._expire_result(e)
 
     def admit(self, request):
         request = validate_request(request, self.instance_id)
@@ -109,6 +133,7 @@ class OperationLedger:
                     if not completed:
                         raise BridgeError("READ_CACHE_FULL", "Read operation cache is full")
                     oldest = min(completed, key=lambda item: item[1]["completed"])[0]
+                    self._release_result_bytes(self._entries[oldest])
                     del self._entries[oldest]
             s = {
                 "instance_id": self.instance_id,
@@ -172,6 +197,9 @@ class OperationLedger:
             self._terminal(e, "failed" if error else "succeeded", self._clock(), plain["error"])
             e["snapshot"]["result"] = plain["result"]
             e["snapshot"]["effect"] = effect if e["mutation"] else "none"
+            e["result_bytes"] = len(encoded)
+            self._result_bytes += len(encoded)
+            self._bound_results()
             if e["mutation"]:
                 self._sequence += 1
             return self._snapshot(e)
@@ -221,5 +249,7 @@ class OperationLedger:
                 "mutation_limit": self.mutation_limit,
                 "mutations": sum(e["mutation"] for e in self._entries.values()),
                 "read_entries": sum(not e["mutation"] for e in self._entries.values()),
+                "result_bytes": self._result_bytes,
+                "result_bytes_limit": self.result_bytes_limit,
                 "bridge_sequence": self._sequence,
             }

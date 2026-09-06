@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import json
 import threading
 
 import pytest
@@ -203,3 +204,71 @@ def test_cancel_admit_churn_does_not_accumulate_phantom_queue_entries():
         ledger.cancel(op)
     assert ledger.status()["queued"] == 0
     assert ledger.take_next() is None
+
+
+def test_result_byte_budget_evicts_bodies_without_redispatching_mutations():
+    # Include result/error serialization overhead when exercising the exact cap.
+    result = {"payload": "x" * (512 * 1024)}
+    body_bytes = len(json.dumps({"result": result, "error": None}).encode("utf-8"))
+    ledger = OperationLedger("instance-a", result_bytes_limit=body_bytes * 2)
+    for number in range(6):
+        op = "op-" + str(number)
+        ledger.admit(request(op))
+        assert ledger.take_next()["operation_id"] == op
+        assert ledger.finish(op, result=result)["result"] == result
+        assert ledger.status()["result_bytes"] <= body_bytes * 2
+    assert ledger.status()["result_bytes"] == body_bytes * 2
+    assert ledger.status()["mutations"] == 6
+    for number in range(4):
+        expired = ledger.admit(request("op-" + str(number)))
+        assert expired["state"] == "succeeded"
+        assert expired["effect"] == "applied"
+        assert expired["result"] is None
+        assert expired["error"]["code"] == "RESULT_EXPIRED"
+    assert ledger.take_next() is None
+    assert ledger.status()["bridge_sequence"] == 6
+
+
+def test_read_results_share_byte_budget_and_release_bytes_on_cache_expiry():
+    clock = Clock()
+    ledger = OperationLedger(
+        "instance-a", result_bytes_limit=512, read_limit=1, clock=clock, result_ttl=5, read_ttl=1
+    )
+    result = {"payload": "x" * 350}
+    ledger.admit(request("mutation"))
+    ledger.take_next()
+    ledger.finish(
+        "mutation",
+        result=result,
+        effect="partial",
+        error={"code": "PARTIAL", "message": "Some changes applied"},
+    )
+    ledger.admit(request("read-1", command="list_documents"))
+    ledger.take_next()
+    ledger.finish("read-1", result=result)
+    expired = ledger.get("mutation")
+    assert expired["state"] == "failed" and expired["effect"] == "partial"
+    assert expired["error"]["code"] == "RESULT_EXPIRED"
+    # Count eviction also releases the old read body, avoiding phantom byte use.
+    ledger.admit(request("read-2", command="list_documents"))
+    assert ledger.status()["result_bytes"] == 0
+    ledger.take_next()
+    ledger.finish("read-2", result=result)
+    assert ledger.status()["result_bytes"] > 0
+    clock.now += 2
+    assert ledger.status()["result_bytes"] == 0
+    assert ledger.status()["read_entries"] == 0
+    assert ledger.admit(request("mutation"))["error"]["code"] == "RESULT_EXPIRED"
+    assert ledger.take_next() is None
+
+
+def test_mutation_ttl_releases_retained_result_bytes():
+    clock = Clock()
+    ledger = OperationLedger("instance-a", clock=clock, result_ttl=1)
+    ledger.admit(request())
+    ledger.take_next()
+    ledger.finish("op-1", result={"document_id": "doc-1"})
+    assert ledger.status()["result_bytes"] > 0
+    clock.now += 2
+    assert ledger.status()["result_bytes"] == 0
+    assert ledger.get("op-1")["error"]["code"] == "RESULT_EXPIRED"
