@@ -167,10 +167,10 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 | `krita_get_region_preview` | In-canvas crop PNG with origin, scale, and color metadata |
 | `krita_activate_document` | Activate an existing view of an explicit document |
 | `krita_clear_selection` | Explicitly remove the active selection |
-| `krita_set_selection` | Replace with a bounded rectangle or polygon mask |
-| `krita_set_layer_properties` | Explicit paint-layer name, visibility, and opacity |
+| `krita_set_selection` | Replace/add/subtract/intersect with a bounded rectangle or polygon mask |
+| `krita_set_layer_properties` | Paint/group/mask name, visibility, opacity; paint/group compositing; paint-layer alpha lock |
 | `krita_copy_layer` | Duplicate a supported paint layer into an explicit destination document |
-| `krita_move_layer` | Reorder a supported paint layer or place it in a group |
+| `krita_move_layer` | Reorder a paint layer or bounded group, rejecting locked/animated subtrees and cycles |
 | `krita_transform_layer` | Bounded pixel affine transform about an explicit pivot |
 | `krita_open_document` | Open bounded PNG/JPEG/KRA from a configured input root |
 | `krita_import_image_layer` | Import bounded PNG/JPEG into a new top paint layer |
@@ -192,6 +192,22 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 | `krita_get_diffusion_generation` | Poll owned generation state and stable result handles |
 | `krita_get_diffusion_result` | Inspect a generated image without selecting its canvas preview |
 | `krita_apply_diffusion_result` | Apply an owned result as a new top paint layer |
+| `krita_create_group_layer` | Create a named group in an explicit parent |
+| `krita_create_transparency_mask` | Attach a mask initialized from selection or constant canvas opacity |
+| `krita_set_transparency_mask` | Replace mask coverage from selection or constant canvas opacity |
+| `krita_delete_layer` | Remove a supported node and bounded subtree; retain a top-level layer |
+| `krita_merge_layer_down` | Merge adjacent visible simple paint layers and return the reconciled handle |
+| `krita_edit_history` | One enabled undo/redo step on the explicit active document, including user history |
+| `krita_modify_selection` | Invert/grow/shrink/feather existing coverage and clip it to the canvas |
+| `krita_transform_canvas` | Bounded crop/resize/scale/right-angle rotation/flip of the whole image |
+| `krita_paint_shape` | Native rectangle/ellipse with explicit brush outline and optional foreground fill |
+| `krita_fill_layer` | Selection-aware solid/linear-gradient/four-connected flood fill or raster erase, at most 1 MP |
+| `krita_get_layer_preview` | Inline PNG of a node projection in canvas bounds |
+| `krita_sample_color` | One settled canvas or node projection color with alpha |
+| `krita_inspect_brush` | Read active-document brush settings without changing them |
+| `krita_configure_diffusion` | Persist bounded Generate settings on an existing document model |
+| `krita_set_diffusion_controls` | Replace root or regional control/reference conditioning lists |
+| `krita_set_diffusion_region` | Create/update/remove a bounded single-linked prompt region |
 
 Reference editing uses bounded typed commands, with direct layer/selection/pixel edits explicitly reporting no guaranteed undo grouping. Native Bézier paths reuse native painting and completion guards. Opening/importing files uses separate configured input roots. The supported behavior and exact live checks are recorded in [validation](validation.md). A static capability resource can complement these tools, but clients should not require resource subscriptions to perform the basic workflow.
 

@@ -19,7 +19,7 @@ before launch to start manually. Stopping waits for already dispatched native wo
 <p>The directory must already exist. File tools accept a root name and relative path, with explicit
 overwrite permission. No output roots are needed for inspection, painting, or inline previews.</p>
 <h2>Reference editing</h2>
-<p>Commands can activate an existing document view, clear or replace a selection, inspect a canvas
+<p>Commands can activate an existing document view, clear, replace or combine a selection, inspect a canvas
 crop, copy and reorder paint layers, set visibility/name/opacity, and align an overlay with a bounded
 pixel transform. Native cubic Bézier paths use the selected pixel-brush preset. Layer and selection
 edits do not promise an undo transaction; duplicate an important layer before transforming it.</p>
@@ -29,6 +29,14 @@ before launching Krita:</p>
 <p>Use the named root and a relative path. Imports and transforms require the documented RGBA/U8/sRGB
 color space and fit the complete result inside the canvas. Building a plugin update does not change
 an already running instance; install and restart when you are ready.</p>
+<h2>General editing</h2>
+<p>Typed commands create groups and transparency masks, configure compositing, delete or merge layers,
+refine selections, crop/resize/scale/rotate/flip the canvas, and paint native rectangles/ellipses.
+Selection-aware raster fills and erasing require standard RGBA/U8/sRGB and a canvas of at most one
+megapixel. Layer previews, color sampling and brush inspection are read-only.</p>
+<p>The history tool performs one enabled undo/redo step on the explicitly targeted active document,
+including user edits. Reuse its operation ID on retries. It cannot select an earlier bridge operation
+or make direct raster/mask/selection writes undoable.</p>
 <h2>Operation outcomes</h2>
 <p>Reuse the same operation ID and arguments when retrying uncertain work. A timeout does not undo
 an edit. Check operation status before issuing another mutation. Painting requires the requested
