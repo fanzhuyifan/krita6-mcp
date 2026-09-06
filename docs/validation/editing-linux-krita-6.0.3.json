@@ -23,7 +23,11 @@
     "jpeg_import_and_layer_reordering_projection": true,
     "affine_scale_rotation_pivot_translation_pixels_and_retry": true,
     "png_jpeg_and_layered_kra_open_and_retry": true,
-    "invalid_paths_bounds_and_duplicate_conflicts_preserve_documents": true
+    "invalid_paths_bounds_and_duplicate_conflicts_preserve_documents": true,
+    "unretained_create_wrapper_removes_viewless_native_document": true,
+    "failed_layer_activation_retains_partial_node_handle_without_replay": true,
+    "failed_create_view_retains_owner_handle_retry_attach_and_close": true,
+    "failed_open_view_retains_owner_handle_retry_attach_and_close": true
   },
   "region_preview": {
     "mime_type": "image/png",

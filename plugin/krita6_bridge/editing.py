@@ -550,16 +550,35 @@ class EditingMixin:
         else:
             self._read_input_image(path)
         previous_batch = self.app.batchmode()
+        handle = None
+        restore_failed = False
         try:
             self.app.setBatchmode(True)
             document = self.app.openDocument(str(path))
+            if document is not None:
+                handle = self._register_owned_document(document)
         finally:
-            self.app.setBatchmode(previous_batch)
+            try:
+                self.app.setBatchmode(previous_batch)
+            except Exception:
+                if handle is None:
+                    raise
+                restore_failed = True
         if document is None:
             raise BridgeError(
                 "FILE_READ_FAILED", "Krita could not open the document.", effect="unknown"
             )
-        handle = self._document_id(document)
+        if restore_failed:
+            return Pending(
+                self,
+                handle,
+                {"document_id": handle},
+                error=BridgeError(
+                    "OPEN_FAILED",
+                    "The file opened but batch mode could not be restored.",
+                    effect="partial",
+                ),
+            )
         try:
             view = window.addView(document)
             if view is None:

@@ -3,6 +3,7 @@
 import importlib.util
 import sys
 import types
+import weakref
 from pathlib import Path
 
 import pytest
@@ -101,8 +102,19 @@ def test_pending_closed_document_reports_unknown_effect(host_modules):
     assert error.value.effect == "unknown"
 
 
-@pytest.mark.parametrize("completion", ["partial", "closed", "unexpected"])
-def test_executor_preserves_pending_recovery_handles_with_terminal_error(host_modules, completion):
+@pytest.mark.parametrize(
+    "completion, pending_error",
+    [
+        ("partial", True),
+        ("closed", True),
+        ("unexpected", True),
+        ("closed", False),
+        ("unexpected", False),
+    ],
+)
+def test_executor_preserves_pending_recovery_handles_with_terminal_error(
+    host_modules, completion, pending_error
+):
     host_module, executor_module = host_modules
     ledger = OperationLedger("instance-one")
     request = validate_request(
@@ -110,8 +122,14 @@ def test_executor_preserves_pending_recovery_handles_with_terminal_error(host_mo
             "bridge_protocol": 1,
             "instance_id": "instance-one",
             "operation_id": "open-once",
-            "command": "open_document",
-            "params": {"root": "scratch", "path": "reference.kra"},
+            "command": "open_document" if pending_error else "apply_diffusion_result",
+            "target": {} if pending_error else {"document_id": "opened-document"},
+            "params": {"root": "scratch", "path": "reference.kra"}
+            if pending_error
+            else {
+                "generation_id": "generation-one",
+                "result_id": "result-one",
+            },
         },
         "instance-one",
     )
@@ -123,6 +141,7 @@ def test_executor_preserves_pending_recovery_handles_with_terminal_error(host_mo
         "source_node_id": "source-node",
         "generation_id": "generation-one",
         "result_id": "result-one",
+        "new_node_ids": ["generated-node-one", "generated-node-two"],
     }
     known_result = {
         **recovery_handles,
@@ -130,6 +149,8 @@ def test_executor_preserves_pending_recovery_handles_with_terminal_error(host_mo
         "settings_restored": True,
         "active_view": True,
         "width": 128,
+        "application": "new_layer_on_top",
+        "effect": "applied",
     }
     document = object()
     dispatched = []
@@ -158,7 +179,9 @@ def test_executor_preserves_pending_recovery_handles_with_terminal_error(host_mo
                 self,
                 "opened-document",
                 known_result,
-                error=BridgeError("OPEN_FAILED", "The view could not be initialized.", "partial"),
+                error=BridgeError("OPEN_FAILED", "The view could not be initialized.", "partial")
+                if pending_error
+                else None,
             )
 
     host = FakeHost()
@@ -193,6 +216,7 @@ def test_executor_preserves_pending_recovery_handles_with_terminal_error(host_mo
     assert ledger.is_idle()
     # The ledger retains a plain-data copy for reconciliation and duplicate IDs.
     known_result["document_id"] = "later-change"
+    known_result["new_node_ids"].append("later-node")
     assert ledger.admit(request) == outcome
     assert ledger.take_next() is None
     assert len(dispatched) == 1
@@ -328,6 +352,149 @@ def test_create_document_enforces_open_document_limit_before_native_creation(hos
     assert error.value.code == "DOCUMENT_LIMIT"
 
 
+@pytest.mark.parametrize(
+    "command, failure_phase",
+    [
+        (command, phase)
+        for command in ("create_document", "open_document")
+        for phase in (
+            "add_view_none",
+            "add_view_exception",
+            "show_view",
+            "metadata",
+            "metadata_bridge_error",
+            "batch_restore",
+        )
+        if command == "open_document" or phase != "batch_restore"
+    ],
+)
+def test_native_document_failure_preserves_owner_handle_and_completion_gate(
+    host_modules, monkeypatch, command, failure_phase
+):
+    host_module, executor_module = host_modules
+    natives, owner_refs, calls = [], [], []
+
+    class DocumentWrapper:
+        def __init__(self, native):
+            self.native = native
+
+        def __eq__(self, other):
+            return isinstance(other, DocumentWrapper) and self.native is other.native
+
+    def native_document(*args):
+        native = types.SimpleNamespace(ready=False, open=True)
+        natives.append(native)
+        owner = DocumentWrapper(native)
+        owner_refs.append(weakref.ref(owner))
+        calls.append(command)
+        return owner
+
+    def add_view(document):
+        calls.append("add_view")
+        # Register before view initialization: failed initialization must still
+        # expose the exact created/opened document and retain its original wrapper.
+        assert list(host._owned_documents.values()) == [document]
+        if failure_phase == "add_view_exception":
+            raise RuntimeError("Injected view creation failure")
+        if failure_phase == "add_view_none":
+            return None
+        return object()
+
+    def show_view(view):
+        calls.append("show_view")
+        if failure_phase == "show_view":
+            raise RuntimeError("Injected view activation failure")
+
+    def metadata(handle, document):
+        calls.append("metadata")
+        if failure_phase == "metadata_bridge_error":
+            raise BridgeError("METADATA_FAILED", "Injected metadata failure")
+        raise RuntimeError("Injected metadata failure")
+
+    def set_batchmode(value):
+        if failure_phase == "batch_restore" and value is False:
+            raise RuntimeError("Injected batch mode restoration failure")
+
+    window = types.SimpleNamespace(addView=add_view, showView=show_view)
+    host = host_module.KritaHost.__new__(host_module.KritaHost)
+    host._assert_gui_thread = lambda: None
+    host._is_ready = lambda document: document.native.ready
+    host._documents, host._owned_documents = {}, {}
+    host._metadata = metadata
+    host.input_roots = {}
+    host._read_input_image = lambda path: None
+    # File containment and decoding have separate tests; these cases isolate
+    # errors after the native file/document creation has already succeeded.
+    monkeypatch.setattr(
+        "krita6_bridge.editing.resolve_input_path", lambda *args, **kwargs: Path("reference.png")
+    )
+    host.app = types.SimpleNamespace(
+        # Like LibKis, each enumeration returns fresh nonowning wrappers.
+        documents=lambda: [DocumentWrapper(native) for native in natives if native.open],
+        activeWindow=lambda: window,
+        profiles=lambda *args: [host_module.SRGB_PROFILE],
+        createDocument=native_document,
+        openDocument=native_document,
+        batchmode=lambda: False,
+        setBatchmode=set_batchmode,
+    )
+    host.execute = lambda request: getattr(host, "_" + command)(
+        request["target"], request["params"]
+    )
+    ledger = OperationLedger("instance-one")
+    request = validate_request(
+        {
+            "bridge_protocol": 1,
+            "instance_id": "instance-one",
+            "operation_id": "create-once",
+            "command": command,
+            "params": {"width": 16, "height": 16, "name": "scratch"}
+            if command == "create_document"
+            else {"root": "scratch", "path": "reference.png"},
+        },
+        "instance-one",
+    )
+    ledger.admit(request)
+    executor = executor_module.GuiExecutor.__new__(executor_module.GuiExecutor)
+    executor.host, executor.ledger = host, ledger
+    executor._current = executor._pending = None
+    executor._disposed = executor._draining = False
+    executor.tick()
+    pending = executor._pending
+    assert isinstance(pending, host_module.Pending)
+    handle = pending.document_id
+    assert pending.result == {"document_id": handle}
+    assert pending.error.effect == "partial"
+    assert host._owned_documents[handle] is owner_refs[0]()
+    executor.tick()
+    executor.tick()
+    assert owner_refs[0]() is not None
+    assert host._documents[handle] is not owner_refs[0]()
+    assert ledger.admit(request)["state"] == "running"
+    assert executor._pending is pending
+    assert not ledger.is_idle()
+
+    natives[0].ready = True
+    executor.tick()
+    outcome = ledger.get("create-once")
+    assert outcome["state"] == "failed"
+    assert outcome["effect"] == "partial"
+    assert outcome["error"]["code"] == (
+        "CREATE_FAILED" if command == "create_document" else "OPEN_FAILED"
+    )
+    assert outcome["result"] == {"document_id": handle}
+    assert ledger.admit(request) == outcome
+    assert ledger.take_next() is None
+    assert calls.count(command) == 1
+    assert ledger.is_idle()
+    # Closing the native document releases only the bridge-created owner; the
+    # normal reconciliation registry continues to use fresh wrappers.
+    natives[0].open = False
+    assert host._reconcile_documents() == {}
+    assert host._owned_documents == {}
+    assert owner_refs[0]() is None
+
+
 def test_create_layer_counts_nested_nodes_before_native_creation(host_modules):
     host_module, _ = host_modules
     leaf = types.SimpleNamespace(childNodes=lambda: [])
@@ -456,7 +623,7 @@ def test_post_dispatch_failure_retains_gate_until_native_completion(
 
 
 @pytest.mark.parametrize(
-    "failure_phase", ["attach_exception", "attach_false", "refresh", "uuid", "name"]
+    "failure_phase", ["attach_exception", "attach_false", "activation", "refresh", "uuid", "name"]
 )
 @pytest.mark.parametrize("drain", [False, True])
 def test_layer_failure_retains_gate_without_duplicate_layer(host_modules, failure_phase, drain):
@@ -487,6 +654,10 @@ def test_layer_failure_retains_gate_without_duplicate_layer(host_modules, failur
         if len(created) == 1 and failure_phase == "refresh":
             raise RuntimeError("injected exception after scheduling projection")
 
+    def activate(node):
+        if node.index == 0 and failure_phase == "activation":
+            raise RuntimeError("injected layer activation failure")
+
     def node_id(node):
         if node.index == 0 and failure_phase == "uuid":
             raise RuntimeError("injected UUID metadata failure")
@@ -495,7 +666,7 @@ def test_layer_failure_retains_gate_without_duplicate_layer(host_modules, failur
     parent = types.SimpleNamespace(type=lambda: "grouplayer", addChildNode=attach_node)
     document.rootNode = lambda: parent
     document.createNode = create_node
-    document.setActiveNode = lambda node: None
+    document.setActiveNode = activate
     document.refreshProjection = refresh
     host = host_module.KritaHost.__new__(host_module.KritaHost)
     host._assert_gui_thread = lambda: None
@@ -550,6 +721,10 @@ def test_layer_failure_retains_gate_without_duplicate_layer(host_modules, failur
     assert outcome["state"] == "failed"
     assert outcome["effect"] == ("unknown" if failure_phase.startswith("attach") else "partial")
     assert outcome["error"]["code"] == "CREATE_FAILED"
+    assert outcome["result"] == {
+        "document_id": "doc-one",
+        **({"node_id": "node-0"} if failure_phase in {"activation", "refresh", "name"} else {}),
+    }
     assert ledger.admit(first)["state"] == "failed"
     executor.tick()
     if drain:

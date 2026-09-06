@@ -112,6 +112,8 @@ This provides at-most-once dispatch within a live instance, not exactly-once exe
 - `node_id`: Krita `Node.uniqueId()`, resolved through the specified document's `nodeByUniqueID()`. A UUID alone does not establish document ownership. Reject a deleted/recreated node or a wrong-document target.
 - `preset_id`: handle from the current instance's preset catalog. Names are labels; detect missing or changed resources before painting.
 
+Direct `createDocument` and `openDocument` return originating wrappers that can own the native document until a view takes ownership. The GUI host registers a handle immediately and retains those original wrappers in a separate owner registry until the document closes, including after view initialization fails. Ordinary target lookup still uses fresh enumerated wrappers; this narrow retention does not apply to notifier callback objects.
+
 Never retain document/view wrappers supplied by Notifier callbacks: some are deleted immediately after signal emission. Use signals to request reconciliation with fresh GUI-thread enumeration. The [Document](https://raw.githubusercontent.com/KDE/krita/v6.0.3/libs/libkis/Document.cpp) and [Notifier](https://raw.githubusercontent.com/KDE/krita/master/libs/libkis/Notifier.cpp) implementations establish these ownership details.
 
 Document inspection reports bounds/origin, dimensions, profile/model/depth, modified state, active view, selection summary, current frame, and layer hierarchy. Validate target type, ancestor locks/visibility, dimensions, and color space immediately before editing. V1 painting supports nonanimated paint layers and rejects an active nonempty selection until selection semantics have been validated and added explicitly.

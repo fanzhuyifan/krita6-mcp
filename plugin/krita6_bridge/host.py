@@ -78,6 +78,10 @@ class KritaHost(EditingMixin):
         self.output_roots = {name: Path(path) for name, path in output_roots.items()}
         self.input_roots = {name: Path(path) for name, path in (input_roots or {}).items()}
         self._documents = {}
+        # createDocument/openDocument return owning wrappers until addView
+        # transfers native ownership. Retain only our originating wrappers so
+        # failed initialization cannot delete a document during reconciliation.
+        self._owned_documents = {}
         self._presets = {}
         self._diffusion = DiffusionReader(self._assert_gui_thread)
         self._diffusion_generator = DiffusionGenerator(
@@ -286,7 +290,19 @@ class KritaHost(EditingMixin):
                     pass
             registry[handle or ("doc-" + uuid.uuid4().hex)] = document
         self._documents = registry
+        self._owned_documents = {
+            handle: document
+            for handle, document in self._owned_documents.items()
+            if handle in registry
+        }
         return registry
+
+    def _register_owned_document(self, document):
+        """Anchor a wrapper returned directly by our native create/open call."""
+        handle = "doc-" + uuid.uuid4().hex
+        self._documents[handle] = document
+        self._owned_documents[handle] = document
+        return handle
 
     def _document(self, document_id):
         document = self._reconcile_documents().get(document_id)
@@ -557,23 +573,27 @@ class KritaHost(EditingMixin):
         )
         if document is None:
             raise BridgeError("CREATE_FAILED", "Krita could not create the requested document.")
+        # Native creation already registers the document, before it has a view.
+        # Establish its handle and retain its owner before any fallible view call.
+        handle = self._register_owned_document(document)
+        result = {"document_id": handle}
         try:
             view = window.addView(document)
             if view is None:
-                raise BridgeError(
-                    "CREATE_FAILED", "The document was created without a view.", effect="partial"
-                )
+                raise RuntimeError("The document was created without a view")
             window.showView(view)
-            handle = self._document_id(document)
             result = self._metadata(handle, document)
-        except BridgeError:
-            raise
         except Exception:
-            raise BridgeError(
-                "CREATE_FAILED",
-                "The document was created but initialization failed.",
-                effect="partial",
-            ) from None
+            return Pending(
+                self,
+                handle,
+                result,
+                error=BridgeError(
+                    "CREATE_FAILED",
+                    "The document was created but initialization failed.",
+                    effect="partial",
+                ),
+            )
         return Pending(self, handle, result)
 
     @staticmethod
@@ -635,27 +655,30 @@ class KritaHost(EditingMixin):
         if node is None:
             raise BridgeError("CREATE_FAILED", "Krita could not create the paint layer.")
         attached = False
+        result = {"document_id": target["document_id"]}
         try:
             attached = parent.addChildNode(node, None)
             if not attached:
                 return Pending(
                     self,
                     target["document_id"],
-                    {},
+                    result,
                     error=BridgeError(
                         "CREATE_FAILED",
                         "Krita could not confirm attachment of the new paint layer.",
                         effect="unknown",
                     ),
                 )
+            # Record the attached node before activation, refresh, or metadata
+            # can fail, so recovery can address the layer without recreating it.
+            result["node_id"] = self._node_id(node)
             document.setActiveNode(node)
             document.refreshProjection()
             return Pending(
                 self,
                 target["document_id"],
                 {
-                    "document_id": target["document_id"],
-                    "node_id": self._node_id(node),
+                    **result,
                     "name": node.name(),
                     "undo": "not_guaranteed",
                 },
@@ -667,7 +690,7 @@ class KritaHost(EditingMixin):
             return Pending(
                 self,
                 target["document_id"],
-                {},
+                result,
                 error=BridgeError(
                     "CREATE_FAILED",
                     "The layer was attached but initialization failed."

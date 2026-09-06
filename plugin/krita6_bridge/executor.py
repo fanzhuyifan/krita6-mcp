@@ -111,6 +111,7 @@ class GuiExecutor(QObject):
                 "source_node_id",
                 "generation_id",
                 "result_id",
+                "new_node_ids",
             )
             if key in result
         }

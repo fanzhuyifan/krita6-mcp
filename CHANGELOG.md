@@ -16,8 +16,7 @@ Changes are recorded here before release. Version 0.1.0 is currently unreleased.
 
 ### Fixed during initial development
 
-- Reference-editing review fixes distinguish known partial mutations, preserve recovery handles on failed pending operations, and accept nonempty odd-even self-intersecting selections.
-
+- Reference-editing review fixes distinguish known partial mutations, preserve document and layer recovery handles on failed creation/completion, and accept nonempty odd-even self-intersecting selections.
 - Preset handles remain usable after bridge-owned brush setting changes.
 - Native completion remains tracked after painting or layer-creation errors.
 - Stopped executors release Qt ownership and cached state.

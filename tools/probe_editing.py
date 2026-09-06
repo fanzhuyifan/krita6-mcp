@@ -52,12 +52,14 @@ async def scenario(base, instance_id):
         temporary.write_text(json.dumps({"id": fixture_id, "action": action}))
         temporary.replace(base / "fixture-request.json")
         path = base / f"fixture-{fixture_id}.json"
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + 30
         while not path.exists():
             if (base / "fixture-error.json").exists():
                 raise AssertionError((base / "fixture-error.json").read_text())
             if time.monotonic() > deadline:
-                raise TimeoutError("Independent fixture observation did not complete")
+                busy = base / "fixture-busy.json"
+                detail = busy.read_text() if busy.exists() else "no busy-document observation"
+                raise TimeoutError(f"Independent fixture observation did not complete: {detail}")
             await asyncio.sleep(0.05)
         return json.loads(path.read_text())
 
@@ -66,7 +68,7 @@ async def scenario(base, instance_id):
 
     async with Client(parameters) as client:
 
-        async def call(tool_name, *, failure=False, **arguments):
+        async def call(tool_name, *, failure=False, failure_effect="none", **arguments):
             (base / "progress.json").write_text(
                 json.dumps({"tool": tool_name, "arguments": arguments})
             )
@@ -100,7 +102,9 @@ async def scenario(base, instance_id):
                 data = response.structured_content
             if failure:
                 assert response.is_error, (tool_name, data)
-                assert data.get("effect", data.get("error", {}).get("effect")) == "none", data
+                assert data.get("effect", data.get("error", {}).get("effect")) == failure_effect, (
+                    data
+                )
             elif response.is_error:
                 raise AssertionError(f"{tool_name}: {data}")
             return response, data.get("result", data) if not failure else data
@@ -491,6 +495,118 @@ async def scenario(base, instance_id):
             await call(name, failure=True, **arguments)
         assert await fixture() == before_failures
         checks["invalid_paths_bounds_and_duplicate_conflicts_preserve_documents"] = True
+
+        control = await fixture("ownership_control")
+        assert control["recovery"]["control_owner_removed"] is True
+        checks["unretained_create_wrapper_removes_viewless_native_document"] = True
+        initial_count = len(control["documents"])
+        for recovery_case, creation_tool, creation_arguments in (
+            (
+                "create",
+                "krita_create_document",
+                dict(
+                    operation_id="recovery-create-document",
+                    width=64,
+                    height=48,
+                    name="Creation recovery fixture",
+                ),
+            ),
+            (
+                "open",
+                "krita_open_document",
+                dict(operation_id="recovery-open-document", root="scratch", path="colors.png"),
+            ),
+        ):
+            await fixture("fail_next_view")
+            _, failed_creation = await call(
+                creation_tool, failure=True, failure_effect="partial", **creation_arguments
+            )
+            assert failed_creation["state"] == "failed"
+            assert set(failed_creation["result"]) == {"document_id"}
+            recovery_id = failed_creation["result"]["document_id"]
+            _, repeated_creation = await call(
+                creation_tool, failure=True, failure_effect="partial", **creation_arguments
+            )
+            assert repeated_creation == failed_creation
+            _, settled = await call(
+                "krita_get_operation",
+                failure=True,
+                failure_effect="partial",
+                operation_id=creation_arguments["operation_id"],
+            )
+            assert settled == failed_creation
+            # Force release of temporary aliases/exception frames, then repeatedly
+            # reconcile against fresh native wrappers. Only the host retains the
+            # original owning create/open wrapper before a view is attached.
+            recovery_snapshot = await fixture("collect")
+            assert recovery_snapshot["recovery"]["document_id"] == recovery_id
+            assert recovery_snapshot["recovery"]["owner_retained"]
+            for _ in range(3):
+                _, inventory = await call("krita_list_documents")
+                assert len(inventory["documents"]) == initial_count + 1
+                assert any(d["document_id"] == recovery_id for d in inventory["documents"])
+                _, recovered = await call("krita_inspect_document", document_id=recovery_id)
+                assert recovered["active_view"] is False
+                await fixture("collect")
+
+            if recovery_case == "create":
+                await fixture("fail_layer_activation")
+                layer_arguments = dict(
+                    operation_id="recovery-create-layer",
+                    document_id=recovery_id,
+                    name="Attached recovery layer",
+                )
+                _, failed_layer = await call(
+                    "krita_create_paint_layer",
+                    failure=True,
+                    failure_effect="partial",
+                    **layer_arguments,
+                )
+                assert set(failed_layer["result"]) == {"document_id", "node_id"}
+                assert failed_layer["result"]["document_id"] == recovery_id
+                _, repeated_layer = await call(
+                    "krita_create_paint_layer",
+                    failure=True,
+                    failure_effect="partial",
+                    **layer_arguments,
+                )
+                assert repeated_layer == failed_layer
+                _, recovered = await call("krita_inspect_document", document_id=recovery_id)
+                attached = [
+                    n for n in recovered["layers"] if n["name"] == "Attached recovery layer"
+                ]
+                assert len(attached) == 1
+                assert attached[0]["node_id"] == failed_layer["result"]["node_id"]
+                assert (await fixture("collect"))["recovery"]["layer_failures"] == 1
+                checks["failed_layer_activation_retains_partial_node_handle_without_replay"] = True
+
+            await fixture("attach_recovery_view")
+            await call(
+                "krita_activate_document",
+                operation_id=f"recovery-activate-{recovery_case}",
+                document_id=recovery_id,
+            )
+            _, recovered = await call("krita_inspect_document", document_id=recovery_id)
+            assert recovered["active_view"] is True
+            await fixture("close_recovery")
+            _, inventory = await call("krita_list_documents")
+            assert len(inventory["documents"]) == initial_count
+            assert not any(d["document_id"] == recovery_id for d in inventory["documents"])
+            assert (await fixture("collect"))["recovery"]["owner_retained"] is False
+            _, closed = await call("krita_inspect_document", failure=True, document_id=recovery_id)
+            assert closed["error"]["code"] == "TARGET_NOT_FOUND"
+            # Retrying the failed identity after the user closes the recovered
+            # document still returns the recorded outcome, never another document.
+            _, repeated_closed = await call(
+                creation_tool, failure=True, failure_effect="partial", **creation_arguments
+            )
+            assert repeated_closed == failed_creation
+            _, inventory = await call("krita_list_documents")
+            assert len(inventory["documents"]) == initial_count
+            checks[f"failed_{recovery_case}_view_retains_owner_handle_retry_attach_and_close"] = (
+                True
+            )
+
         return {
             "passed": True,
             "host": {
