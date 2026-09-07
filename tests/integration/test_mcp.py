@@ -85,7 +85,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             listed = await client.list_tools()
             tools = listed.tools if hasattr(listed, "tools") else listed
             by_name = {tool.name: tool for tool in tools}
-            assert len(by_name) == 50
+            assert len(by_name) == 56
             assert by_name["krita_status"].annotations.read_only_hint
             diffusion_tools = {
                 "krita_diffusion_status",
@@ -120,6 +120,39 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
                 assert ("operation_id" in tool.input_schema["required"]) == (
                     command not in GENERAL_READS
                 )
+            from krita6_bridge.vector_protocol import VECTOR_COMMANDS, VECTOR_MUTATIONS
+
+            vector_samples = {
+                "create_vector_layer": {"name": "Vectors"},
+                "inspect_vector_layer": {},
+                "add_vector_shape": {
+                    "geometry": {"kind": "rectangle", "x": 1, "y": 2, "width": 3, "height": 4}
+                },
+                "edit_vector_shape": {
+                    "snapshot_id": "snapshot",
+                    "shape_index": 0,
+                    "visible": False,
+                },
+                "delete_vector_shape": {"snapshot_id": "snapshot", "shape_index": 0},
+                "merge_vector_layer_down": {},
+            }
+
+            for command in VECTOR_COMMANDS:
+                tool = by_name["krita_" + command]
+                assert tool.annotations.read_only_hint == (command not in VECTOR_MUTATIONS)
+                args = {
+                    "instance_id": "integration",
+                    "document_id": "doc",
+                    **({} if command == "create_vector_layer" else {"node_id": "layer"}),
+                    **vector_samples[command],
+                }
+                if command in VECTOR_MUTATIONS:
+                    args["operation_id"] = "adapter-" + command
+                reply = await client.call_tool("krita_" + command, args)
+                assert not reply.is_error, reply
+                if command in VECTOR_MUTATIONS:
+                    repeated = await client.call_tool("krita_" + command, args)
+                    assert repeated.structured_content == reply.structured_content
             assert "operation_id" in by_name["krita_paint_path"].input_schema["required"]
             assert "pressure" not in by_name["krita_paint_path"].input_schema["properties"]
             editing_mutations = {
@@ -456,7 +489,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             "points": [[0, 0], [32, 0], [16, 24]],
         }
         assert edits["paint_bezier_path"]["params"]["segments"] == [[[3, 4], [5, 6], [7, 8]]]
-        assert ledger.status()["mutations"] == 15
+        assert ledger.status()["mutations"] == 20
     finally:
         stop.set()
         thread.join(timeout=2)

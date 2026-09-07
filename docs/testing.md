@@ -65,3 +65,7 @@ The full probe requests a 512×512 image, inspects it, and explicitly applies it
 ## General editing
 
 `probe_general_editing.py` reuses the isolated profile/display/scratch-document infrastructure and independent native snapshot fixture. It drives the added MCP tools, verifies exact pixels, selection masks and layer PNGs, checks native shape undo/redo and brush restoration, and repeats every mutation ID. It exercises selection combinations/refinement, transparency masks, groups and cycle rejection, alpha locks/compositing/merge, and canvas flip/rotation/crop/resize/scale. Never point it at a normal Krita session. Retain sanitized evidence only after a complete passing run.
+
+## Vector host checks
+
+Run `tools/probe_vector_editing.py` with the clean environment above. It uses the production MCP server/plugin and independent native snapshots to check geometry, pixels, vector-preserving merges and `.kra` persistence at 72 and 144 DPI. See [vector semantics](vector-editing.md).

@@ -6,10 +6,12 @@ Changes are recorded here before release. Version 0.1.0 is currently unreleased.
 
 ### Added
 
+- Native vector-layer creation, typed rectangle/ellipse/polygon/Bézier shapes, snapshot-checked shape transforms/properties/deletion, and adjacent vector-layer merging that retains editable shapes.
+
 - Linked PNG/JPEG file-layer creation, source/scaling updates, inspection metadata, and common layer properties, with bounded input-root validation.
 
 - External stdio MCP server and separate PyQt6 plugin for Krita 6.
-- Thirty-nine core tools for discovery, document/layer inspection and creation, native paths and pressure lines, inline PNG previews, layered save, PNG export, operation reconciliation/cancellation, and reference editing.
+- Forty-five core tools for discovery, document/layer inspection and creation, native paths and pressure lines, inline PNG previews, layered save, PNG export, operation reconciliation/cancellation, and reference editing.
 - Reference editing: document activation, explicit selection clearing/replacement, cropped previews, paint-layer properties/copy/reordering, bounded affine raster transforms, input-root file opening and image import, and native cubic Bézier strokes.
 - General editing: groups/transparency masks, compositing, deletion/merge, one-step undo/redo, selection combination/refinement, canvas transforms, native shapes, selection-aware raster fills/erasing, and layer/color/brush inspection.
 - Authenticated loopback transport, private discovery, bounded queues/results, and mutation identities retained for the plugin session.

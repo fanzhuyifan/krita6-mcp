@@ -154,9 +154,19 @@ File tools use configured input/output roots, canonical containment checks, boun
 
 The [general editing decision record](general-editing.md) defines typed group/mask, history, selection, canvas, shape, fill/erase and inspection operations and their bounded host behavior. Validation evidence lives in the [validation record](validation.md#general-editing).
 
+## Vector editing
+
+[Vector editing](vector-editing.md) adds typed native shapes, top-level shape inspection,
+state-checked transforms/properties/deletion, and adjacent vector-layer merging that
+preserves editable shapes. Because native shapes lack UUIDs, edits explicitly use a
+layer-state snapshot and index rather than a persistent identity. Merges require plain,
+matching compositing states and retain the source on incomplete copy. Native wrappers
+remain on the GUI thread and do not survive a command; retry identities remain in the
+operation ledger. Direct writes and multi-phase merges do not promise atomic undo.
+
 ## Initial MCP surface
 
-Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 39 core tools and eleven optional AI Diffusion tools, for 50 total. The configuration tools persist bounded Generate settings and configure conditioning against explicit layer identities; [integration decisions](diffusion-integration.md#persistent-configuration) define their source and mutation boundary. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
+Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 45 core tools and eleven optional AI Diffusion tools, for 56 total. The configuration tools persist bounded Generate settings and configure conditioning against explicit layer identities; [integration decisions](diffusion-integration.md#persistent-configuration) define their source and mutation boundary. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
 
 | Tool | Contract |
 | --- | --- |
@@ -175,6 +185,12 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 | `krita_open_document` | Open bounded PNG/JPEG/KRA from a configured input root |
 | `krita_import_image_layer` | Import bounded PNG/JPEG into a new top paint layer |
 | `krita_create_document` | Bounded RGBA/U8/sRGB document plus an attached active view |
+| `krita_create_vector_layer` | Native vector layer in the root or explicit group |
+| `krita_add_vector_shape` | Typed editable rectangle, ellipse, polygon or cubic Bézier |
+| `krita_inspect_vector_layer` | Top-level shape metadata and state/index addresses |
+| `krita_edit_vector_shape` | State-checked transform, name, visibility and stacking |
+| `krita_delete_vector_shape` | Remove one shape from an unchanged snapshot |
+| `krita_merge_vector_layer_down` | Merge adjacent plain vector layers while retaining vectors |
 | `krita_create_file_layer` | Linked PNG/JPEG from an input root, optional parent, no scaling or fit to image |
 | `krita_set_file_layer` | Replace file-layer source and scaling after bounded input checks |
 | `krita_create_paint_layer` | Explicit parent/document; return node UUID |

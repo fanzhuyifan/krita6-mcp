@@ -543,7 +543,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         inherit_alpha: Boolean | None = None,
         alpha_locked: Boolean | None = None,
     ) -> CallToolResult:
-        """Set paint/group/mask/file-layer name, visibility, or opacity in [0,1]; paint/group/file-layer blend mode and alpha inheritance; paint-layer alpha lock. No guaranteed undo transaction or atomic multi-property rollback. Reuse operation_id on retries."""
+        """Set paint/group/mask/file/vector-layer name, visibility, or opacity in [0,1]; paint/group/file/vector-layer blend mode and alpha inheritance; paint-layer alpha lock. No guaranteed undo transaction or atomic multi-property rollback. Reuse operation_id on retries."""
         params = {
             key: value
             for key, value in (("name", name), ("visible", visible), ("opacity", opacity))
@@ -842,6 +842,9 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
     from .general_tools import register_general_tools
 
     register_general_tools(server, execute, attach_preview)
+    from .vector_tools import register_vector_tools
+
+    register_vector_tools(server, execute)
     return server
 
 

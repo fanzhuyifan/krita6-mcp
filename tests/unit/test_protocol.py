@@ -160,8 +160,12 @@ def test_catalog_samples_cover_every_command():
         "save_document": (doc, {"root": "output", "path": "scratch.kra"}),
         "export_png": (doc, {"root": "output", "path": "scratch.png"}),
     }
+    from test_vectors import VALID, request as vector_request
+
+    for command, params in VALID.items():
+        samples[command] = (vector_request(command)["target"], params)
     assert set(samples) == COMMANDS
-    assert len(MUTATIONS) == 33
+    assert len(MUTATIONS) == 38
     for command, (target, params) in samples.items():
         normalized = validate_request(request(command, target=target, params=params), "instance-a")
         assert normalized["command"] == command

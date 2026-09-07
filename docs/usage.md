@@ -20,7 +20,7 @@ Run `uv run krita6-mcp doctor --json` from the checkout to read connection state
 
 ## Editing and retries
 
-Before editing, list documents and inspect the target. The catalog has 39 core tools and eleven optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
+Before editing, list documents and inspect the target. The catalog has 45 core tools and eleven optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
 
 Native painting requires an active document view, an unlocked nonanimated paint layer, no selection, zero canvas offset, and RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc`. The supported engine is the pixel brush engine. Paths and cubic Bézier paths do not support arbitrary per-point pressure; lines accept endpoint pressure. There is no arbitrary Python/action-execution tool. Ordinary Krita undo and `krita_edit_history` are available for native strokes. The MCP history tool takes one undo/redo step on the explicitly targeted active document, including user edits; reuse its operation ID on retries. See [validation evidence](validation.md) for the exact tested build and preset.
 
@@ -114,3 +114,17 @@ Use `krita_create_group_layer` and `krita_move_layer` to organize paint layers/g
 `krita_paint_shape` draws native rectangles/ellipses. `krita_fill_layer` provides solid, linear-gradient, exact connected flood fills and selection-aware erasing within a one-megapixel canvas, respecting selection coverage. These raster fills do not promise native brush behavior or undo transactions.
 
 Use `krita_get_layer_preview`, `krita_sample_color`, and `krita_inspect_brush` for inspection. `krita_edit_history` performs one undo/redo step on the active document, including user edits in that history. Reuse its operation ID on retries, then inspect the result. It cannot selectively undo an arbitrary bridge operation or make direct writes undoable.
+
+## Vector editing and merging
+
+Create a layer with `krita_create_vector_layer`, then call `krita_add_vector_shape`
+with geometry such as `{"kind":"rectangle","x":8,"y":8,"width":32,"height":24}`
+and `fill="#FF0000"`. Shapes remain editable vectors. `krita_inspect_vector_layer`
+returns a `snapshot_id` and `shape_index` values. Supply both to
+`krita_edit_vector_shape` or `krita_delete_vector_shape`; reinspect after changes.
+For example, `translate_x=16` moves the selected shape 16 image pixels right.
+
+Use `krita_merge_vector_layer_down` on the upper of two adjacent vector layers to
+retain editable shapes in the lower layer and remove the upper layer. Layers must
+use the supported plain compositing state; mixed raster/vector merges are rejected.
+Reuse operation IDs on retries. See [vector scope, merge restrictions and addressing](vector-editing.md).

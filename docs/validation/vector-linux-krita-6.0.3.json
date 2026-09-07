@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "host": {
+    "krita_version": "6.0.3",
+    "qt_version": "6.11.2",
+    "pyqt_version": "6.11.0",
+    "python_version": "3.14.7",
+    "platform": "Linux"
+  },
+  "checks": {
+    "create_transform_pixels_dpi_72_and_duplicate_retries": true,
+    "scale_rotate_visibility_and_order_dpi_72": true,
+    "merge_compositing_rejections_dpi_72": true,
+    "merge_retains_vectors_stacking_and_pixels_dpi_72": true,
+    "delete_polygon_bezier_kra_persistence_dpi_72": true,
+    "create_transform_pixels_dpi_144_and_duplicate_retries": true,
+    "scale_rotate_visibility_and_order_dpi_144": true,
+    "merge_compositing_rejections_dpi_144": true,
+    "merge_retains_vectors_stacking_and_pixels_dpi_144": true,
+    "delete_polygon_bezier_kra_persistence_dpi_144": true
+  }
+}

@@ -160,3 +160,37 @@ The [file-layer report](validation/file-layers-linux-krita-6.0.3.json) records a
 The full automated suite passed 527 tests; the expanded real stdio checks also exercise both new tools in automatic and legacy client modes. Regression coverage includes strict scaling, default normalization for retry hashes, cancelled/expired work before dispatch, conflicting IDs, invalid sources, wrong types, and locked ancestry. Lint, formatting, wheel/sdist, and plugin ZIP builds pass. The live fixture now publishes snapshots atomically after a run exposed a partial-JSON read race.
 
 This is evidence for small untagged PNG/JPEG sources and zero-origin RGBA/U8/standard-sRGB destinations on the reference build. No undo grouping, PPI scaling, arbitrary source format/profile, file-watcher reload timing, external replacement bounds, relocated links, or additional platform compatibility is claimed. Native file layers remain dependent on their source files. Earlier reports retain their original catalog counts.
+
+## Vector editing
+
+The [sanitized vector report](validation/vector-linux-krita-6.0.3.json) records a
+passing `tools/probe_vector_editing.py` run against Linux/Krita 6.0.3, Qt 6.11.2,
+PyQt 6.11.0 and embedded Python 3.14.7. The external runtime drives all six vector
+tools over real MCP; an independent GUI fixture reads native shape types, SVG and
+scratch projection pixels. Tests use transparent 128 × 96 sRGB canvases at 72 and
+144 DPI, with no personal profiles or documents.
+
+- Rectangles and ellipses remain `KoPathShape` objects on native vector layers;
+  expected solid colors, bounds and translation are verified against pixels.
+- Scale/rotation composition, invalidation of old extents, visibility, stacking and
+  names are checked after settled edits.
+- Vector merging preserves the exact fixture projection bytes, retains both editable
+  shapes on the destination vector layer, and removes the source layer.
+- Locked layers, protected shapes, different antialiasing, reduced layer opacity and
+  non-normal blending reject merges before mutation. The fixture exercises native
+  locks/protection and antialiasing directly in the isolated host.
+- Deletion rejects stale snapshots, removes one shape with a fresh snapshot, and
+  never repeats on a duplicate operation ID. All mutation retries return the original
+  result, including failures and merging.
+- Polygon and cubic Bézier creation and `.kra` save/reopen preserve the three native
+  vector shapes in the final fixture.
+
+The vector schema/guard/ledger tests cover cancellation before dispatch, duplicate
+conflicts, invalid geometry and markup, stale/foreign state snapshots, protected or
+grouped targets, serialization headroom and incomplete-copy source retention.
+Real stdio adapter tests cover all six tools in SDK `auto` and `legacy` modes.
+These mock tests establish contracts; they are not native-host evidence.
+
+See [vector limits and merge semantics](vector-editing.md). Direct shape setters and
+multi-phase merges do not promise atomic undo. Other platforms/builds, advanced
+vector styles, groups/text editing and large-document workloads remain unvalidated.
