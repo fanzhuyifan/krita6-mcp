@@ -4,12 +4,19 @@ from .protocol_validation import _object, _integer, _number, _point, _string, _i
 
 from .general_protocol import BLEND_MODES, boolean
 
-LAYER_COMMANDS = {"set_layer_properties", "copy_layer", "transform_layer", "move_layer"}
+LAYER_COMMANDS = {
+    "set_layer_properties",
+    "copy_layer",
+    "transform_layer",
+    "move_layer",
+    "set_file_layer",
+}
 DOCUMENT_COMMANDS = {
     "activate_document",
     "clear_selection",
     "get_region_preview",
     "import_image_layer",
+    "create_file_layer",
     "set_selection",
 }
 EDITING_MUTATIONS = (
@@ -82,6 +89,19 @@ def validate_editing(c, p):
             p["name"] = _string(p["name"], 1, 128, "name")
             for k in ("x", "y"):
                 p[k] = _integer(p[k], 0, 2**31 - 1, k)
+    elif c in {"create_file_layer", "set_file_layer"}:
+        required = {"root", "path"} | ({"name"} if c == "create_file_layer" else set())
+        optional = {"scaling_method"} | ({"parent_node_id"} if c == "create_file_layer" else set())
+        p = _object(p, required | optional, required)
+        validate_id(p["root"], "root")
+        p["path"] = _string(p["path"], 1, 4096, "path")
+        if "name" in p:
+            p["name"] = _string(p["name"], 1, 128, "name")
+        if "parent_node_id" in p:
+            validate_id(p["parent_node_id"], "parent_node_id")
+        p["scaling_method"] = p.get("scaling_method", "None")
+        if p["scaling_method"] not in ("None", "ToImageSize"):
+            _invalid("scaling_method must be None or ToImageSize")
     elif c == "set_selection":
         p = _object(p, {"shape", "x", "y", "width", "height", "points", "mode"}, {"shape"})
         mode = p.pop("mode", "replace")

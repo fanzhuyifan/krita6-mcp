@@ -20,7 +20,7 @@ Run `uv run krita6-mcp doctor --json` from the checkout to read connection state
 
 ## Editing and retries
 
-Before editing, list documents and inspect the target. The catalog has 37 core tools and eleven optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
+Before editing, list documents and inspect the target. The catalog has 39 core tools and eleven optional AI Diffusion tools; the [bridge contract](bridge-contract.md) documents the commands.
 
 Native painting requires an active document view, an unlocked nonanimated paint layer, no selection, zero canvas offset, and RGBA/U8 with `sRGB-elle-V2-srgbtrc.icc`. The supported engine is the pixel brush engine. Paths and cubic Bézier paths do not support arbitrary per-point pressure; lines accept endpoint pressure. There is no arbitrary Python/action-execution tool. Ordinary Krita undo and `krita_edit_history` are available for native strokes. The MCP history tool takes one undo/redo step on the explicitly targeted active document, including user edits; reuse its operation ID on retries. See [validation evidence](validation.md) for the exact tested build and preset.
 
@@ -30,13 +30,21 @@ Every mutation requires an `operation_id`, such as `sketch-outline-001`. Reuse t
 
 Use `krita_activate_document` to select an existing view of the target document. `krita_clear_selection` explicitly removes a selection; native painting continues to reject nonempty selections. `krita_set_selection` uses replace/add/subtract/intersect mode with an in-canvas rectangle or a polygon of 3–256 integer points; replace is the default and other modes require an existing selection. Polygon selection uses a hard, unfeathered mask and odd-even filling.
 
-An overlay workflow is: copy the sketch with `krita_copy_layer`, place it above a reference using `krita_move_layer`, align it with `krita_transform_layer`, adjust visibility/opacity with `krita_set_layer_properties`, and inspect the face with `krita_get_region_preview`. Copying accepts an explicit destination document and name; copying and moving accept an optional destination group and sibling to insert above. Moving stays within its document. Copy/transform accept unlocked, nonanimated paint layers without masks or children. Property edits also support groups and transparency masks, with paint/group-only compositing and paint-only alpha lock. Moves also support bounded groups and reject cycles or locked/animated descendants. Pixel copying/transforms require the same standard RGBA/U8/sRGB authoring space as painting.
+An overlay workflow is: copy the sketch with `krita_copy_layer`, place it above a reference using `krita_move_layer`, align it with `krita_transform_layer`, adjust visibility/opacity with `krita_set_layer_properties`, and inspect the face with `krita_get_region_preview`. Copying accepts an explicit destination document and name; copying and moving accept an optional destination group and sibling to insert above. Moving stays within its document. Copy/transform accept unlocked, nonanimated paint layers without masks or children. Property edits also support groups, transparency masks, and file layers, with paint/group/file-layer compositing and paint-only alpha lock. Moves also support bounded groups and reject cycles or locked/animated descendants. Pixel copying/transforms require the same standard RGBA/U8/sRGB authoring space as painting.
 
 Transform arguments include an explicit image-space `pivot`, `scale_x`/`scale_y`, `rotation_degrees`, and `translate_x`/`translate_y`. The order is scale, clockwise rotation around the pivot, then translation. The entire output must fit inside the canvas. Transforms resample pixels using Qt smooth interpolation and replace the layer's pixels; they are not nondestructive transform masks. Copy the layer first to retain the original. These direct editing operations report `undo: "not_guaranteed"`; only tested native strokes have the stated one-stroke undo behavior.
 
 Region previews accept `x`, `y`, `width`, `height`, and `max_edge` (32–1024), with the entire requested region inside the zero-offset canvas. The returned PNG includes crop origin and scale so its coordinates can be mapped back to the document. Profile/alpha conversion follows Krita's projection API and is not a general archival color guarantee.
 
 For smooth contours, `krita_paint_bezier_path` accepts a starting point and 1–256 cubic segments. Each segment is `[control1, control2, end]`, with each point `[x, y]`. It paints one native path with the same brush settings and active-view restrictions as `krita_paint_path`.
+
+## Linked file layers
+
+Use `krita_create_file_layer(instance_id, operation_id, document_id, root, path, name)` for a linked PNG/JPEG reference. An optional `parent_node_id` places it in a group. `scaling_method="None"` keeps the source size; `"ToImageSize"` fits it to the image with Bicubic filtering. Inputs use `KRITA6_MCP_INPUT_ROOTS` and the same 32 MiB / 16 MP image limits as import.
+
+Use `krita_set_file_layer` with explicit document/node IDs, root, path, and scaling to relink an existing file layer. Inspection returns its native path and scaling settings; `krita_set_layer_properties` supports name, visibility, opacity, blending, and alpha inheritance. Reuse each operation ID on retries. These operations do not guarantee undo grouping.
+
+Keep the linked source available alongside your work. Krita owns future file reloads; bridge bounds are checked when creating or relinking, and do not constrain later external file changes. File-layer copying, moving, deleting, raster transforms, and direct painting are not added by these tools.
 
 ## Save and export
 

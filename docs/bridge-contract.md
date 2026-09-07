@@ -55,6 +55,8 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | inspect_brush | document_id | empty; requires active document |
 | list_brush_presets | empty | query: str="" (0..256 characters), offset: int=0 (0..2147483647), limit: int=50 (1..100) |
 | create_document | empty | width,height: int (1..8192, product <=16777216), name: str (1..128 characters) |
+| create_file_layer | document_id | root, path, name; optional parent_node_id; scaling_method: None (default) or ToImageSize |
+| set_file_layer | document_id,node_id | root, path; scaling_method: None (default) or ToImageSize |
 | create_paint_layer | document_id | name: str (1..128 characters), parent_node_id: optional identifier |
 | paint_path | document_id,node_id | preset_id, size_px: finite number (0.1..1000), opacity: finite number (0..1), color: #RRGGBB, points: list of 2..2048 [finite x,y] pairs |
 | paint_line | document_id,node_id | same brush settings, start/end: [int x,y] pairs (signed 32-bit components), pressure_start/pressure_end: finite number=1 (0..1) |
@@ -62,7 +64,7 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | save_document | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 | export_png | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 
-There are 31 mutation commands and 14 reads. The MCP catalog adds status and operation lookup/cancellation for 48 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
+There are 33 mutation commands and 14 reads. The MCP catalog adds status and operation lookup/cancellation for 50 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
 
 ## Operation ledger
 
@@ -158,3 +160,11 @@ Job pages contain snapshot_index, nullable job_id, kind, raw upstream state, and
 Only finished bridge-owned jobs expose stable `result_id` handles tied to exact image objects. Result previews use the normal artifact transport and inline MCP image path. Application validates the original document/model, dimensions, color space, bounds, and image identity, then creates a new top paint layer and uses `Pending` for native completion, including errors after dispatch. Request preparation can also require a native barrier after restoring temporary layer visibility. Rendering does not hold the bridge queue gate.
 
 Generation inherits add-on selection, regional prompt, and control/reference preparation. Bridge-owned jobs suppress automatic preview/application; unowned jobs keep upstream behavior. Job history and document annotations still change. No backend installation/connection or cancellation tool is exposed. See [integration policies and limits](diffusion-integration.md).
+
+## Linked file layers
+
+`create_file_layer` creates a native file layer under the document root or an explicit unlocked group. `set_file_layer` replaces an existing nonanimated, unlocked file layer's source and scaling. Both resolve PNG/JPEG sources through input roots (32 MiB, 8192 pixels per side, 16 MP decoded); preflight decoding precedes native mutation. The destination must be a bounded zero-origin RGBA/U8/standard-sRGB document. Scaling is `None` or `ToImageSize`, always using `Bicubic`; PPI scaling is not exposed. Native loading uses the original source and Krita's color management, not the preflight decoder's converted pixels.
+
+Inspection includes `file_layer: {path, scaling_method, scaling_filter}` for native file layers. Common layer properties support file layers, except paint-only alpha lock. Copy, move, delete, merge, and pixel transforms retain their previous supported target types; no raster painting into file layers is exposed.
+
+Native attachment/relinking uses the existing pending barrier and reports `undo: not_guaranteed`. Retry/cancel semantics match other mutations. A link is an ongoing external dependency: Krita may reload future source changes independently of the bridge, without bridge size/root revalidation or a bridge sequence increment. The checks bound the source at dispatch, not later external edits. Missing sources and link relocation after moving a saved document are not repaired automatically. File-watcher timing and externally replaced sources remain unvalidated.

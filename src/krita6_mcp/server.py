@@ -458,6 +458,44 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         )
 
     @server.tool(annotations=MUTATION)
+    async def krita_create_file_layer(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        root: Identifier,
+        path: RelativePath,
+        name: Name,
+        scaling_method: Literal["None", "ToImageSize"] = "None",
+        parent_node_id: Identifier | None = None,
+    ) -> CallToolResult:
+        """Create a linked PNG/JPEG file layer from a configured input root. Krita watches the source; keep it available. Supports no scaling or fit to image, with Bicubic filtering. No guaranteed undo. Reuse operation_id on retries."""
+        params = {"root": root, "path": path, "name": name, "scaling_method": scaling_method}
+        if parent_node_id is not None:
+            params["parent_node_id"] = parent_node_id
+        return await execute(
+            "create_file_layer", instance_id, operation_id, {"document_id": document_id}, params
+        )
+
+    @server.tool(annotations=MUTATION)
+    async def krita_set_file_layer(
+        instance_id: Identifier,
+        operation_id: Identifier,
+        document_id: Identifier,
+        node_id: Identifier,
+        root: Identifier,
+        path: RelativePath,
+        scaling_method: Literal["None", "ToImageSize"] = "None",
+    ) -> CallToolResult:
+        """Replace a file layer's linked PNG/JPEG source and scaling, using a configured input root. Uses Bicubic filtering. Source must remain available; no guaranteed undo. Reuse operation_id on retries."""
+        return await execute(
+            "set_file_layer",
+            instance_id,
+            operation_id,
+            {"document_id": document_id, "node_id": node_id},
+            {"root": root, "path": path, "scaling_method": scaling_method},
+        )
+
+    @server.tool(annotations=MUTATION)
     async def krita_create_document(
         instance_id: Identifier,
         operation_id: Identifier,
@@ -505,7 +543,7 @@ def create_server(client: BridgeClient | None = None) -> MCPServer:
         inherit_alpha: Boolean | None = None,
         alpha_locked: Boolean | None = None,
     ) -> CallToolResult:
-        """Set paint/group/mask name, visibility, or opacity in [0,1]; paint/group blend mode and alpha inheritance; paint-layer alpha lock. No guaranteed undo transaction or atomic multi-property rollback. Reuse operation_id on retries."""
+        """Set paint/group/mask/file-layer name, visibility, or opacity in [0,1]; paint/group/file-layer blend mode and alpha inheritance; paint-layer alpha lock. No guaranteed undo transaction or atomic multi-property rollback. Reuse operation_id on retries."""
         params = {
             key: value
             for key, value in (("name", name), ("visible", visible), ("opacity", opacity))

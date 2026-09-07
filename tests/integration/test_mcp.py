@@ -85,7 +85,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             listed = await client.list_tools()
             tools = listed.tools if hasattr(listed, "tools") else listed
             by_name = {tool.name: tool for tool in tools}
-            assert len(by_name) == 48
+            assert len(by_name) == 50
             assert by_name["krita_status"].annotations.read_only_hint
             diffusion_tools = {
                 "krita_diffusion_status",
@@ -123,6 +123,18 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             assert "operation_id" in by_name["krita_paint_path"].input_schema["required"]
             assert "pressure" not in by_name["krita_paint_path"].input_schema["properties"]
             editing_mutations = {
+                "create_file_layer": {
+                    "root": "references",
+                    "path": "face.png",
+                    "name": "Linked",
+                    "parent_node_id": "group",
+                },
+                "set_file_layer": {
+                    "node_id": "file",
+                    "root": "references",
+                    "path": "face.png",
+                    "scaling_method": "ToImageSize",
+                },
                 "activate_document": {},
                 "clear_selection": {},
                 "set_layer_properties": {"node_id": "source", "visible": False, "opacity": 0.5},
@@ -405,8 +417,8 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
         edits = {
             item["command"]: item for item in dispatched if item["operation_id"].startswith("edit-")
         }
-        assert len(edits) == 10
-        assert len([item for item in dispatched if item["operation_id"].startswith("edit-")]) == 10
+        assert len(edits) == 12
+        assert len([item for item in dispatched if item["operation_id"].startswith("edit-")]) == 12
         assert edits["activate_document"]["target"] == {"document_id": "scratch"}
         assert edits["activate_document"]["params"] == {}
         assert edits["set_layer_properties"]["params"] == {"visible": False, "opacity": 0.5}
@@ -427,6 +439,10 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
         assert edits["move_layer"]["params"] == {"above_node_id": "reference"}
         assert edits["open_document"]["target"] == {}
         assert edits["open_document"]["params"] == {"root": "references", "path": "face.png"}
+        assert edits["create_file_layer"]["params"]["scaling_method"] == "None"
+        assert edits["create_file_layer"]["params"]["parent_node_id"] == "group"
+        assert edits["set_file_layer"]["target"] == {"document_id": "scratch", "node_id": "file"}
+        assert edits["set_file_layer"]["params"]["scaling_method"] == "ToImageSize"
         assert edits["import_image_layer"]["params"] == {
             "root": "references",
             "path": "face.png",
@@ -440,7 +456,7 @@ def test_stdio_tools_mutations_and_inline_preview(tmp_path, mode):
             "points": [[0, 0], [32, 0], [16, 24]],
         }
         assert edits["paint_bezier_path"]["params"]["segments"] == [[[3, 4], [5, 6], [7, 8]]]
-        assert ledger.status()["mutations"] == 13
+        assert ledger.status()["mutations"] == 15
     finally:
         stop.set()
         thread.join(timeout=2)

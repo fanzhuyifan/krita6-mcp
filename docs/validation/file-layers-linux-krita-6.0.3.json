@@ -1,0 +1,67 @@
+{
+  "passed": true,
+  "host": {
+    "krita_version": "6.0.3",
+    "qt_version": "6.11.2",
+    "pyqt_version": "6.11.0",
+    "python_version": "3.14.7",
+    "platform": "Linux",
+    "display_backend": "xcb",
+    "plugin_version": "0.1.0",
+    "bridge_protocol": 1
+  },
+  "checks": {
+    "tool_count": 50,
+    "activation_selects_requested_document": true,
+    "odd_even_bowtie_lobes_and_empty_polygon_rejection": true,
+    "rectangle_polygon_and_clear_selection": true,
+    "native_bezier_pixels_duplicate_and_one_undo_redo": true,
+    "png_import_offset_channels_alpha_and_retry": true,
+    "layer_name_visibility_opacity_actual_projection": true,
+    "region_preview_coordinates_channels_alpha_and_no_side_effects": true,
+    "cross_document_copy_preserves_source_and_deduplicates": true,
+    "jpeg_import_and_layer_reordering_projection": true,
+    "affine_scale_rotation_pivot_translation_pixels_and_retry": true,
+    "png_jpeg_and_layered_kra_open_and_retry": true,
+    "invalid_paths_bounds_and_duplicate_conflicts_preserve_documents": true,
+    "unretained_create_wrapper_removes_viewless_native_document": true,
+    "failed_layer_activation_retains_partial_node_handle_without_replay": true,
+    "failed_create_view_retains_owner_handle_retry_attach_and_close": true,
+    "failed_open_view_retains_owner_handle_retry_attach_and_close": true,
+    "file_layer_create_parent_pixels_inspection_and_retry": true,
+    "file_layer_relink_jpeg_scaling_pixels_and_retry": true,
+    "file_layer_common_properties": true,
+    "file_layer_path_and_type_rejection": true,
+    "file_layer_kra_save_reopen_link_preserved": true
+  },
+  "region_preview": {
+    "mime_type": "image/png",
+    "size_bytes": 129,
+    "source_bounds": {
+      "x": 20,
+      "y": 20,
+      "width": 24,
+      "height": 16
+    },
+    "source_offset": {
+      "x": 20,
+      "y": 20
+    },
+    "preview_width": 24,
+    "preview_height": 16,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "color": {
+      "source_profile": "sRGB-elle-V2-srgbtrc.icc",
+      "source_model": "RGBA",
+      "source_depth": "U8",
+      "preview_profile": "unspecified",
+      "conversion": "Krita projection API",
+      "alpha": "Krita projection API"
+    }
+  },
+  "region_preview_sha256": "0849c9fc1232ec7ccb6dfb8ec0bdbe2d6b4d93ce8fe6d939408ccab061a2f9ce",
+  "limits": "Small RGBA/U8/standard-sRGB scratch canvases, Basic-5 Size pixel brush; no general undo guarantee for direct editing."
+}

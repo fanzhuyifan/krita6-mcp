@@ -112,7 +112,7 @@ async def scenario(base, instance_id):
         _, host = await call("krita_status")
         listing = await client.list_tools()
         catalog = listing.tools if hasattr(listing, "tools") else listing
-        assert len(catalog) == 48
+        assert len(catalog) == 50
         checks["tool_count"] = len(catalog)
         _, source = await call(
             "krita_create_document",
@@ -606,6 +606,104 @@ async def scenario(base, instance_id):
             checks[f"failed_{recovery_case}_view_retains_owner_handle_retry_attach_and_close"] = (
                 True
             )
+
+        _, linked_doc = await call(
+            "krita_create_document",
+            operation_id="file-doc",
+            width=128,
+            height=96,
+            name="Linked reference",
+        )
+        linked_id = linked_doc["document_id"]
+        _, group = await call(
+            "krita_create_group_layer",
+            operation_id="file-group",
+            document_id=linked_id,
+            name="References",
+        )
+        file_args = dict(
+            document_id=linked_id,
+            root="scratch",
+            path="colors.png",
+            name="Linked colors",
+            parent_node_id=group["node_id"],
+        )
+        _, linked = await call("krita_create_file_layer", operation_id="file-create", **file_args)
+        _, duplicate = await call(
+            "krita_create_file_layer", operation_id="file-create", **file_args
+        )
+        assert linked == duplicate
+        _, inspected = await call("krita_inspect_document", document_id=linked_id)
+        linked_node = next(n for n in inspected["layers"] if n["node_id"] == linked["node_id"])
+        assert linked_node["type"] == "filelayer"
+        assert linked_node["parent_node_id"] == group["node_id"]
+        assert linked_node["file_layer"]["scaling_method"] == "None"
+        assert linked_node["file_layer"]["path"].endswith("colors.png")
+        observed = document(await fixture(), "Linked reference")
+        assert pixel(observed, 2, 2) == [255, 0, 0, 255]
+        assert pixel(observed, 2, 12) == [0, 0, 255, 255]
+        checks["file_layer_create_parent_pixels_inspection_and_retry"] = True
+        update = dict(
+            document_id=linked_id,
+            node_id=linked["node_id"],
+            root="scratch",
+            path="orange.jpg",
+            scaling_method="ToImageSize",
+        )
+        _, updated = await call("krita_set_file_layer", operation_id="file-update", **update)
+        _, duplicate = await call("krita_set_file_layer", operation_id="file-update", **update)
+        assert updated == duplicate
+        _, inspected = await call("krita_inspect_document", document_id=linked_id)
+        linked_node = next(n for n in inspected["layers"] if n["node_id"] == linked["node_id"])
+        assert linked_node["file_layer"]["scaling_method"] == "ToImageSize"
+        assert linked_node["file_layer"]["path"].endswith("orange.jpg")
+        observed = document(await fixture(), "Linked reference")
+        assert pixel(observed, 64, 40)[3] == 255
+        assert all(abs(a - b) <= 2 for a, b in zip(pixel(observed, 64, 40), [240, 120, 20, 255]))
+        checks["file_layer_relink_jpeg_scaling_pixels_and_retry"] = True
+        await call(
+            "krita_set_layer_properties",
+            operation_id="file-properties",
+            document_id=linked_id,
+            node_id=linked["node_id"],
+            name="Linked orange",
+            opacity=0.5,
+            visible=False,
+        )
+        _, inspected = await call("krita_inspect_document", document_id=linked_id)
+        linked_node = next(n for n in inspected["layers"] if n["node_id"] == linked["node_id"])
+        assert linked_node["name"] == "Linked orange" and linked_node["opacity"] == 128
+        assert linked_node["visible"] is False
+        checks["file_layer_common_properties"] = True
+        _, invalid = await call(
+            "krita_set_file_layer",
+            failure=True,
+            operation_id="file-invalid",
+            **{**update, "path": "../outside.png"},
+        )
+        assert invalid["error"]["code"] == "INVALID_PATH"
+        _, invalid = await call(
+            "krita_set_file_layer",
+            failure=True,
+            operation_id="file-wrong-type",
+            **{**update, "node_id": group["node_id"]},
+        )
+        assert invalid["error"]["code"] == "INVALID_TARGET_TYPE"
+        checks["file_layer_path_and_type_rejection"] = True
+        await call(
+            "krita_save_document",
+            operation_id="file-save",
+            document_id=linked_id,
+            root="scratch",
+            path="linked.kra",
+        )
+        _, reopened = await call(
+            "krita_open_document", operation_id="file-reopen", root="scratch", path="linked.kra"
+        )
+        _, inspected = await call("krita_inspect_document", document_id=reopened["document_id"])
+        restored = next(n for n in inspected["layers"] if n["type"] == "filelayer")
+        assert restored["file_layer"] == linked_node["file_layer"]
+        checks["file_layer_kra_save_reopen_link_preserved"] = True
 
         return {
             "passed": True,

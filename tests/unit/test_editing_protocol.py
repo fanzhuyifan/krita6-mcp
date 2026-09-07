@@ -18,6 +18,8 @@ DOCUMENT = {"document_id": "doc-1"}
 LAYER = {**DOCUMENT, "node_id": "node-1"}
 BRUSH = {"preset_id": "brush-1", "size_px": 5, "opacity": 1, "color": "#abcdef"}
 SAMPLES = {
+    "create_file_layer": (DOCUMENT, {"root": "input", "path": "ref.png", "name": "Ref"}),
+    "set_file_layer": ({**DOCUMENT, "node_id": "node-1"}, {"root": "input", "path": "ref.png"}),
     "activate_document": (DOCUMENT, {}),
     "clear_selection": (DOCUMENT, {}),
     "get_region_preview": (DOCUMENT, {"x": 0, "y": 1, "width": 64, "height": 32}),
@@ -299,3 +301,26 @@ def test_explicit_transform_defaults_deduplicate_omitted_defaults():
     explicit = validate_request(body, "instance-a")
     assert ledger.admit(explicit)["state"] == "queued"
     assert ledger.status()["mutations"] == 1
+
+
+@pytest.mark.parametrize("command", ["create_file_layer", "set_file_layer"])
+@pytest.mark.parametrize("scaling", ["ToImagePPI", "bogus", True, None, [], {}])
+def test_file_layer_scaling_is_bounded(command, scaling):
+    body = request(command)
+    body["params"]["scaling_method"] = scaling
+    with pytest.raises(BridgeError) as error:
+        validate_request(body, "instance-a")
+    assert error.value.code == "INVALID_REQUEST"
+
+
+@pytest.mark.parametrize("command", ["create_file_layer", "set_file_layer"])
+def test_file_layer_default_scaling_has_same_retry_identity(command):
+    ledger = OperationLedger("instance-a")
+    body = request(command)
+    ledger.admit(body)
+    body["params"]["scaling_method"] = "None"
+    assert ledger.admit(body)["state"] == "queued"
+    body["params"]["scaling_method"] = "ToImageSize"
+    with pytest.raises(BridgeError) as error:
+        ledger.admit(body)
+    assert error.value.code == "OPERATION_ID_CONFLICT"

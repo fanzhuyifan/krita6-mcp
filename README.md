@@ -62,7 +62,7 @@ mkdir -p /absolute/path/to/artwork
 KRITA6_MCP_OUTPUT_ROOTS='{"art":"/absolute/path/to/artwork"}' krita
 ```
 
-File tools use `root="art"` and a relative path. Replacing files requires `overwrite=true`. Painting and previews work without output roots. Opening PNG/JPEG/KRA files or importing PNG/JPEG layers uses separate `KRITA6_MCP_INPUT_ROOTS` configured the same way. [File configuration](docs/usage.md#save-and-export) and [reference editing](docs/usage.md#reference-overlays).
+File tools use `root="art"` and a relative path. Replacing files requires `overwrite=true`. Painting and previews work without output roots. Opening PNG/JPEG/KRA files, importing PNG/JPEG layers, or creating/relinking native file layers uses separate `KRITA6_MCP_INPUT_ROOTS` configured the same way. [File configuration](docs/usage.md#save-and-export) and [reference editing](docs/usage.md#reference-overlays).
 
 ## Development and verification
 
@@ -78,7 +78,7 @@ Linux host checks require Krita, Xvfb, xauth, and D-Bus. Run from a shell withou
 ```bash
 .venv/bin/python tools/probe_krita.py
 .venv/bin/python tools/smoke_krita.py
-.venv/bin/python tools/probe_editing.py
+.venv/bin/python tools/probe_editing.py  # Includes linked file-layer creation, relink, scaling, save/reopen
 .venv/bin/python tools/probe_plugin_import.py
 ```
 

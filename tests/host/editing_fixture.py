@@ -224,7 +224,9 @@ class EditingFixture(Extension):
             (self.output / "fixture-busy.json").unlink(missing_ok=True)
             if self.pending is not None:
                 result = self.snapshot()
-                (self.output / f"fixture-{self.pending}.json").write_text(json.dumps(result))
+                temporary = self.output / f"fixture-{self.pending}.tmp"
+                temporary.write_text(json.dumps(result))
+                temporary.replace(self.output / f"fixture-{self.pending}.json")
                 self.pending = None
             request_path = self.output / "fixture-request.json"
             if not request_path.exists():

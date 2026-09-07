@@ -156,7 +156,7 @@ The [general editing decision record](general-editing.md) defines typed group/ma
 
 ## Initial MCP surface
 
-Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 37 core tools and eleven optional AI Diffusion tools, for 48 total. The configuration tools persist bounded Generate settings and configure conditioning against explicit layer identities; [integration decisions](diffusion-integration.md#persistent-configuration) define their source and mutation boundary. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
+Use individually typed tools rather than an unbounded `execute(command, args)` tool. The catalog contains 39 core tools and eleven optional AI Diffusion tools, for 50 total. The configuration tools persist bounded Generate settings and configure conditioning against explicit layer identities; [integration decisions](diffusion-integration.md#persistent-configuration) define their source and mutation boundary. Every state-changing tool includes `instance_id` and `operation_id`; document/layer writes also require explicit target handles.
 
 | Tool | Contract |
 | --- | --- |
@@ -168,13 +168,15 @@ Use individually typed tools rather than an unbounded `execute(command, args)` t
 | `krita_activate_document` | Activate an existing view of an explicit document |
 | `krita_clear_selection` | Explicitly remove the active selection |
 | `krita_set_selection` | Replace/add/subtract/intersect with a bounded rectangle or polygon mask |
-| `krita_set_layer_properties` | Paint/group/mask name, visibility, opacity; paint/group compositing; paint-layer alpha lock |
+| `krita_set_layer_properties` | Paint/group/mask/file-layer name, visibility, opacity; paint/group/file-layer compositing; paint-layer alpha lock |
 | `krita_copy_layer` | Duplicate a supported paint layer into an explicit destination document |
 | `krita_move_layer` | Reorder a paint layer or bounded group, rejecting locked/animated subtrees and cycles |
 | `krita_transform_layer` | Bounded pixel affine transform about an explicit pivot |
 | `krita_open_document` | Open bounded PNG/JPEG/KRA from a configured input root |
 | `krita_import_image_layer` | Import bounded PNG/JPEG into a new top paint layer |
 | `krita_create_document` | Bounded RGBA/U8/sRGB document plus an attached active view |
+| `krita_create_file_layer` | Linked PNG/JPEG from an input root, optional parent, no scaling or fit to image |
+| `krita_set_file_layer` | Replace file-layer source and scaling after bounded input checks |
 | `krita_create_paint_layer` | Explicit parent/document; return node UUID |
 | `krita_list_brush_presets` | Search and paginate available preset handles |
 | `krita_paint_path` | Explicit target, preset, size, opacity, color, bounded path |

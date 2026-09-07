@@ -146,3 +146,17 @@ Krita's initial opaque background is hidden in this fixture so transparency is m
 The existing reference-editing probe also passed again with the 48-tool catalog. The automated suite passes 503 tests, including cancellation-before-dispatch and duplicate/conflicting identities for every added mutation, hidden-group restoration, history guards, flood connectivity, and merge reconciliation. Lint, formatting, Python distributions and plugin ZIP builds pass.
 
 These results establish the tested small Linux fixture, not all engines, platforms, scale filters, or document types. Raster fills/erasing are limited to one megapixel and standard sRGB; direct pixel/mask/selection edits have no guaranteed undo transaction. History steps operate on the active document's real history, including user edits.
+
+## Linked file layers
+
+The [file-layer report](validation/file-layers-linux-krita-6.0.3.json) records a passing production MCP run with the 50-tool catalog on Linux/Krita 6.0.3, Qt 6.11.2, PyQt 6.11.0, embedded Python 3.14.7, and Xvfb/xcb. `tools/probe_editing.py` uses an isolated profile, D-Bus session, runtime, and scratch documents. It independently verifies:
+
+- Native PNG file-layer creation inside a group, exact red/blue projection pixels, source/scaling inspection, and duplicate operation identity.
+- Relinking the same node to JPEG with `ToImageSize`, observed scaled orange pixels within JPEG tolerance, and duplicate update identity.
+- Name, opacity, and visibility properties on the file layer.
+- Rejected traversal and wrong node type before mutation.
+- KRA save/reopen retaining the file-layer source path and scaling metadata.
+
+The full automated suite passed 527 tests; the expanded real stdio checks also exercise both new tools in automatic and legacy client modes. Regression coverage includes strict scaling, default normalization for retry hashes, cancelled/expired work before dispatch, conflicting IDs, invalid sources, wrong types, and locked ancestry. Lint, formatting, wheel/sdist, and plugin ZIP builds pass. The live fixture now publishes snapshots atomically after a run exposed a partial-JSON read race.
+
+This is evidence for small untagged PNG/JPEG sources and zero-origin RGBA/U8/standard-sRGB destinations on the reference build. No undo grouping, PPI scaling, arbitrary source format/profile, file-watcher reload timing, external replacement bounds, relocated links, or additional platform compatibility is claimed. Native file layers remain dependent on their source files. Earlier reports retain their original catalog counts.
