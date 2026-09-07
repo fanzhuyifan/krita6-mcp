@@ -86,7 +86,7 @@ async def scenario(base, instance_id):
         host, _ = await call("status")
         listing = await client.list_tools()
         catalog = listing.tools if hasattr(listing, "tools") else listing
-        assert len(catalog) == 48
+        assert len(catalog) == 50
         doc, _ = await call(
             "create_document", mutation=True, name="General editing", width=64, height=64
         )

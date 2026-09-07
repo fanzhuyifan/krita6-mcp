@@ -194,6 +194,8 @@ class KritaHost(GeneralEditingMixin, EditingMixin):
             "move_layer": self._move_layer,
             "open_document": self._open_document,
             "import_image_layer": self._import_image_layer,
+            "create_file_layer": self._create_file_layer,
+            "set_file_layer": self._set_file_layer,
             "set_selection": self._set_selection,
             "paint_bezier_path": self._paint_bezier_path,
             "list_documents": self._list_documents,
@@ -469,6 +471,12 @@ class KritaHost(GeneralEditingMixin, EditingMixin):
                     "bounds": self._bounds(node.bounds()),
                 }
             )
+            if node.type() == "filelayer":
+                nodes[-1]["file_layer"] = {
+                    "path": node.path(),
+                    "scaling_method": node.scalingMethod(),
+                    "scaling_filter": node.scalingFilter(),
+                }
             stack.extend((child, handle) for child in reversed(node.childNodes()))
         result["layers"] = nodes
         return result

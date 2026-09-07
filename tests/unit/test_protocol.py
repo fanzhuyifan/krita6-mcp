@@ -132,6 +132,8 @@ def test_catalog_samples_cover_every_command():
         "get_diffusion_result": (doc, {"generation_id": "generate-1", "result_id": "image-1"}),
         "apply_diffusion_result": (doc, {"generation_id": "generate-1", "result_id": "image-1"}),
         "create_document": ({}, {"width": 4096, "height": 4096, "name": "Scratch"}),
+        "create_file_layer": (doc, {"root": "input", "path": "ref.png", "name": "Ref"}),
+        "set_file_layer": ({**doc, "node_id": "node-1"}, {"root": "input", "path": "ref.png"}),
         "create_paint_layer": (doc, {"name": "Paint"}),
         "paint_path": ({**doc, "node_id": "node-1"}, {**brush, "points": [[1, 1], [2, 2]]}),
         "paint_line": ({**doc, "node_id": "node-1"}, {**brush, "start": [1, 1], "end": [2, 2]}),
@@ -159,7 +161,7 @@ def test_catalog_samples_cover_every_command():
         "export_png": (doc, {"root": "output", "path": "scratch.png"}),
     }
     assert set(samples) == COMMANDS
-    assert len(MUTATIONS) == 31
+    assert len(MUTATIONS) == 33
     for command, (target, params) in samples.items():
         normalized = validate_request(request(command, target=target, params=params), "instance-a")
         assert normalized["command"] == command

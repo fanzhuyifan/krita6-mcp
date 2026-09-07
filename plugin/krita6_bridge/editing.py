@@ -301,7 +301,11 @@ class EditingMixin:
 
     def _set_layer_properties(self, target, params):
         document = self._editing_document(target["document_id"])
-        node = self._structure_node(document, target["node_id"])
+        node = self._structure_node(
+            document,
+            target["node_id"],
+            allowed=("paintlayer", "grouplayer", "transparencymask", "filelayer"),
+        )
         if "alpha_locked" in params and node.type() != "paintlayer":
             raise BridgeError("INVALID_TARGET_TYPE", "Alpha lock requires a paint layer.")
         if node.type() == "transparencymask" and (
@@ -500,6 +504,58 @@ class EditingMixin:
         else:
             image.setColorSpace(srgb)
         return image.convertToFormat(QImage.Format.Format_ARGB32)
+
+    def _file_layer_source(self, params):
+        path = resolve_input_path(
+            self.input_roots, params["root"], params["path"], {".png", ".jpg", ".jpeg"}
+        )
+        # Decode before native mutation to reject malformed/oversized sources.
+        # Krita loads the original file and performs its own color conversion.
+        self._read_input_image(path)
+        return path
+
+    def _create_file_layer(self, target, params):
+        document = self._editing_document(target["document_id"])
+        self._writable_color(document)
+        self._editing_size(document.width(), document.height())
+        self._require_layer_capacity(document)
+        parent, _ = self._editing_parent(document, params)
+        path = self._file_layer_source(params)
+        node = document.createFileLayer(
+            params["name"], str(path), params["scaling_method"], "Bicubic"
+        )
+        if node is None:
+            raise BridgeError("CREATE_FAILED", "Krita could not create the file layer.")
+        return self._editing_mutate(
+            target["document_id"],
+            lambda: self._editing_steps([lambda: parent.addChildNode(node, None)]),
+            {
+                "node_id": self._node_id(node),
+                "type": "filelayer",
+                "root": params["root"],
+                "path": params["path"],
+                "scaling_method": params["scaling_method"],
+                "scaling_filter": "Bicubic",
+            },
+        )
+
+    def _set_file_layer(self, target, params):
+        document = self._editing_document(target["document_id"])
+        self._writable_color(document)
+        self._editing_size(document.width(), document.height())
+        node = self._structure_node(document, target["node_id"], allowed=("filelayer",))
+        path = self._file_layer_source(params)
+        return self._editing_mutate(
+            target["document_id"],
+            lambda: node.setProperties(str(path), params["scaling_method"], "Bicubic"),
+            {
+                "node_id": target["node_id"],
+                "root": params["root"],
+                "path": params["path"],
+                "scaling_method": params["scaling_method"],
+                "scaling_filter": "Bicubic",
+            },
+        )
 
     def _import_image_layer(self, target, params):
         document = self._editing_document(target["document_id"])
