@@ -10,6 +10,7 @@ Inspect documents, paint with Krita's native brushes, preview the canvas, and sa
 
 - Document/layer inspection and creation, preset search, native paths and lines with endpoint pressure.
 - Document activation, rectangle/polygon selections, and native cubic Bézier paths.
+- Native [vector shapes, editing and vector-layer merging](docs/vector-editing.md), preserving editable vectors in `.kra` files.
 - Layer/group/mask organization, compositing, copying, ordering, merging, and bounded affine transforms.
 - Selection combination/refinement, canvas transforms, native shapes, raster fills/erasing, and single-step undo/redo.
 - Inline whole-canvas/region/layer PNG previews, color and brush inspection, bounded image import/open, layered `.kra` saves, and PNG export.
@@ -107,4 +108,11 @@ Run its independent live-host probe with an isolated profile and scratch documen
 
 ```bash
 .venv/bin/python tools/probe_general_editing.py
+```
+
+Vector editing and merge validation (isolated profile and scratch documents):
+
+```bash
+env -u PYTHONPATH -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH \
+  .venv/bin/python tools/probe_vector_editing.py --krita /usr/bin/krita
 ```

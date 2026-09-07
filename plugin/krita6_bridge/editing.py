@@ -304,7 +304,7 @@ class EditingMixin:
         node = self._structure_node(
             document,
             target["node_id"],
-            allowed=("paintlayer", "grouplayer", "transparencymask", "filelayer"),
+            allowed=("paintlayer", "grouplayer", "transparencymask", "filelayer", "vectorlayer"),
         )
         if "alpha_locked" in params and node.type() != "paintlayer":
             raise BridgeError("INVALID_TARGET_TYPE", "Alpha lock requires a paint layer.")

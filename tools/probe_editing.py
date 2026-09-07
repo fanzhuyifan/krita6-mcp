@@ -112,7 +112,7 @@ async def scenario(base, instance_id):
         _, host = await call("krita_status")
         listing = await client.list_tools()
         catalog = listing.tools if hasattr(listing, "tools") else listing
-        assert len(catalog) == 50
+        assert len(catalog) == 56
         checks["tool_count"] = len(catalog)
         _, source = await call(
             "krita_create_document",
@@ -731,7 +731,7 @@ async def scenario(base, instance_id):
         }
 
 
-def main():
+def main(*, startup_timeout=90):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--krita", default="krita")
     parser.add_argument("--output", type=Path)
@@ -771,7 +771,7 @@ def main():
     report = {"passed": False}
     with launch_krita(base, args.krita, env) as process:
         try:
-            deadline = time.monotonic() + 90
+            deadline = time.monotonic() + startup_timeout
             while True:
                 discovery = list((base / "state").glob("instance-*.json"))
                 if discovery and (base / "fixture-ready.json").exists():

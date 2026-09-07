@@ -30,6 +30,13 @@ from .general_protocol import (
     validate_general,
 )
 
+from .vector_protocol import (
+    VECTOR_COMMANDS,
+    VECTOR_MUTATIONS,
+    VECTOR_LAYER_COMMANDS,
+    validate_vector,
+)
+
 PROTOCOL_VERSION = 1
 PLUGIN_VERSION = "0.1.0"
 MUTATIONS = frozenset(
@@ -59,8 +66,8 @@ COMMANDS = MUTATIONS | {
 }
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
 
-MUTATIONS = MUTATIONS | EDITING_MUTATIONS | CONFIG_COMMANDS | GENERAL_MUTATIONS
-COMMANDS = COMMANDS | EDITING_COMMANDS | CONFIG_COMMANDS | GENERAL_COMMANDS
+MUTATIONS = MUTATIONS | VECTOR_MUTATIONS | EDITING_MUTATIONS | CONFIG_COMMANDS | GENERAL_MUTATIONS
+COMMANDS = COMMANDS | VECTOR_COMMANDS | EDITING_COMMANDS | CONFIG_COMMANDS | GENERAL_COMMANDS
 
 
 def validate_request(body, instance_id):
@@ -96,6 +103,7 @@ def validate_request(body, instance_id):
         in {"paint_path", "paint_line", "paint_bezier_path"}
         | LAYER_COMMANDS
         | GENERAL_LAYER_COMMANDS
+        | VECTOR_LAYER_COMMANDS
         else {"document_id"}
         if c
         in DOCUMENT_COMMANDS
@@ -105,6 +113,7 @@ def validate_request(body, instance_id):
             "inspect_document",
             "get_preview",
             "create_paint_layer",
+            "create_vector_layer",
             "save_document",
             "export_png",
             "inspect_diffusion_document",
@@ -120,7 +129,9 @@ def validate_request(body, instance_id):
     for k, v in target.items():
         validate_id(v, k)
     p = r.get("params", {})
-    if c in GENERAL_COMMANDS:
+    if c in VECTOR_COMMANDS:
+        p = validate_vector(c, p)
+    elif c in GENERAL_COMMANDS:
         p = validate_general(c, p)
     elif c in CONFIG_COMMANDS:
         p = validate_configuration(c, p)

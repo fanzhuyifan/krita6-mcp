@@ -175,6 +175,25 @@ class EditingFixture(Extension):
                             "name": node.name(),
                             "visible": node.visible(),
                             "opacity": node.opacity(),
+                            "type": node.type(),
+                            "vector_svg": node.toSvg() if node.type() == "vectorlayer" else None,
+                            "vector_shapes": [
+                                {
+                                    "name": s.name(),
+                                    "type": s.type(),
+                                    "visible": s.visible(),
+                                    "z_index": s.zIndex(),
+                                    "bounds_pt": [
+                                        s.boundingBox().x(),
+                                        s.boundingBox().y(),
+                                        s.boundingBox().width(),
+                                        s.boundingBox().height(),
+                                    ],
+                                }
+                                for s in node.shapes()
+                            ]
+                            if node.type() == "vectorlayer"
+                            else None,
                             "pixels": base64.b64encode(
                                 bytes(node.pixelData(0, 0, width, height))
                             ).decode(),
@@ -234,7 +253,28 @@ class EditingFixture(Extension):
             request = json.loads(request_path.read_text())
             request_path.unlink()
             action = request["action"]
-            if action in {"undo", "redo"}:
+            if action in {"vector_resolution_72", "vector_resolution_144"}:
+                self.app.activeDocument().setResolution(int(action.rsplit("_", 1)[1]))
+            elif action in {
+                "vector_lock",
+                "vector_unlock",
+                "vector_protect",
+                "vector_unprotect",
+                "vector_antialias_off",
+                "vector_antialias_on",
+            }:
+                node = [
+                    n
+                    for n in self.app.activeDocument().topLevelNodes()
+                    if n.type() == "vectorlayer"
+                ][-1]
+                if action in {"vector_lock", "vector_unlock"}:
+                    node.setLocked(action == "vector_lock")
+                elif action in {"vector_protect", "vector_unprotect"}:
+                    node.shapes()[0].setGeometryProtected(action == "vector_protect")
+                else:
+                    node.setAntialiased(action == "vector_antialias_on")
+            elif action in {"undo", "redo"}:
                 # Fixed test-only actions; no generic action tool is exposed by MCP.
                 self.app.action(f"edit_{action}").trigger()
             elif action == "fail_next_view":

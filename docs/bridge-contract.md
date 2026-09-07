@@ -16,6 +16,12 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 
 | command | target | params |
 | --- | --- | --- |
+| create_vector_layer | document_id | name: str (1..128), optional parent_node_id |
+| inspect_vector_layer | document_id, node_id | empty; returns a layer-state snapshot and top-level shape indices |
+| add_vector_shape | document_id, node_id | geometry: typed rectangle/ellipse/polygon/Bézier; fill="#000000", stroke="none" (#RRGGBB or none), stroke_width=1 (0.01..256), name="Vector shape" (1..128) |
+| edit_vector_shape | document_id, node_id | snapshot_id, shape_index (0..255); nonempty patch: name (1..128), visible: bool, z_index (-32768..32767), translate_x/y (-8192..8192), scale_x/y (0.01..100), rotation_degrees (-360..360) |
+| delete_vector_shape | document_id, node_id | snapshot_id, shape_index (0..255) |
+| merge_vector_layer_down | document_id, node_id | empty; merge into immediately lower sibling vector layer, preserving editable paths |
 | list_documents | empty | empty |
 | inspect_document | document_id | empty |
 | diffusion_status | empty | empty |
@@ -64,7 +70,12 @@ All fields shown without a default are required. Text fields reject NUL. Target 
 | save_document | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 | export_png | document_id | root: identifier, path: str (1..4096 characters), overwrite: bool=false |
 
-There are 33 mutation commands and 14 reads. The MCP catalog adds status and operation lookup/cancellation for 50 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
+There are 38 mutation commands and 15 reads. The MCP catalog adds status and operation lookup/cancellation for 56 tools total. Colors normalize to uppercase and numeric brush/path parameters normalize to floats before hashing. The host validates coordinates against live dimensions and file paths against configured roots immediately before use.
+
+Vector geometry, snapshot addressing, and merge compositing restrictions are specified
+in [vector editing](vector-editing.md). Shape snapshots describe serialized state and
+are not persistent shape identities. All vector mutations participate in the same
+operation ledger and GUI completion gate as other edits.
 
 ## Operation ledger
 

@@ -35,6 +35,8 @@ from .diffusion_generation import DiffusionGenerator
 from .output_paths import resolve_output_path
 from .editing import EditingMixin
 from .general_editing import GeneralEditingMixin
+from .vector_editing import VectorEditingMixin
+from .vector_protocol import VECTOR_COMMANDS
 
 
 SRGB_PROFILE = "sRGB-elle-V2-srgbtrc.icc"
@@ -70,7 +72,7 @@ class Pending:
         return None
 
 
-class KritaHost(GeneralEditingMixin, EditingMixin):
+class KritaHost(VectorEditingMixin, GeneralEditingMixin, EditingMixin):
     def __init__(self, artifacts, output_roots, input_roots=None):
         self._assert_gui_thread()
         self.app = Krita.instance()
@@ -150,6 +152,15 @@ class KritaHost(GeneralEditingMixin, EditingMixin):
                     "direct_write_undo": "not_guaranteed",
                     "evidence": "docs/validation.md",
                 },
+                "vector_editing": {
+                    "max_shapes": 256,
+                    "max_svg_bytes": 262144,
+                    "coordinates": "image_pixels",
+                    "shape_addressing": "layer_state_snapshot_and_top_level_index",
+                    "direct_write_undo": "not_guaranteed",
+                    "merge": "adjacent_plain_vector_layers",
+                    "evidence": "docs/vector-editing.md",
+                },
                 "output_roots": sorted(self.output_roots),
                 "ai_diffusion": {
                     **self._diffusion.capabilities(),
@@ -181,6 +192,7 @@ class KritaHost(GeneralEditingMixin, EditingMixin):
             "modify_selection": self._modify_selection,
             "transform_canvas": self._transform_canvas,
             "paint_shape": self._paint_shape,
+            **{name: getattr(self, "_" + name) for name in VECTOR_COMMANDS},
             "fill_layer": self._fill_layer,
             "get_layer_preview": self._get_layer_preview,
             "sample_color": self._sample_color,

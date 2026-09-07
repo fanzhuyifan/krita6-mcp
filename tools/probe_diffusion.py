@@ -53,7 +53,7 @@ async def scenario(base, instance_id):
         }
         listing = await client.list_tools()
         tools = listing.tools if hasattr(listing, "tools") else listing
-        assert len(tools) == 50
+        assert len(tools) == 56
 
         async def read(name, **arguments):
             response = await client.call_tool(name, {"instance_id": instance_id, **arguments})
